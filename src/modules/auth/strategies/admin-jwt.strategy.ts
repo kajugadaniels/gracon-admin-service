@@ -22,13 +22,15 @@ export interface AdminJwtPayload {
 @Injectable()
 export class AdminJwtStrategy extends PassportStrategy(Strategy, 'admin-jwt') {
   constructor(
-    private readonly config: ConfigService,
+    config: ConfigService,
     private readonly prisma: PrismaService,
   ) {
+    const secret = config.get<string>('ADMIN_JWT_SECRET');
+    if (!secret) throw new Error('ADMIN_JWT_SECRET is not set');
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>('ADMIN_JWT_SECRET'),
+      secretOrKey: secret,
     });
   }
 
