@@ -13,6 +13,9 @@ export class EncryptionService {
 
   constructor(private readonly config: ConfigService) {
     const secret = this.config.get<string>('ENCRYPTION_SECRET');
+    if (!secret) {
+      throw new Error('ENCRYPTION_SECRET environment variable is not set');
+    }
     // Hash the secret to guarantee exactly 32 bytes for AES-256
     this.secretKey = crypto.createHash('sha256').update(secret).digest();
   }
