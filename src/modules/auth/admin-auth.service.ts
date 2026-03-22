@@ -326,7 +326,11 @@ export class AdminAuthService {
 
       newAdmin = this.buildSafeProfile(result);
     } catch (error) {
-      if (error?.code === 'P2002') {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        (error as { code?: unknown }).code === 'P2002'
+      ) {
         throw new ConflictException(
           'An admin account with this email already exists.',
         );
@@ -576,7 +580,9 @@ export class AdminAuthService {
         type: 'admin', // distinguishes from user tokens
       },
       {
-        expiresIn: this.ACCESS_TOKEN_EXPIRY,
+        // Cast required: ACCESS_TOKEN_EXPIRY is string, but @nestjs/jwt expects
+        // the ms StringValue branded type — safe at runtime
+        expiresIn: this.ACCESS_TOKEN_EXPIRY as '8h',
         secret:    this.config.get<string>('ADMIN_JWT_SECRET'),
       },
     );
@@ -617,7 +623,7 @@ export class AdminAuthService {
   private async findValidInviteToken(
     adminId:  string,
     rawToken: string,
-  ): Promise
+  ): Promise<
     | { valid: true;  record: { id: string }; reason: null }
     | { valid: false; record: null;            reason: string }
   > {
