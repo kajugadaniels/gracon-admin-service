@@ -13,6 +13,7 @@ import { AuditModule } from './common/audit/audit.module';
 // Admin service uses tighter limits than auth service
 // because admin actions are more sensitive
 import { ThrottlerGuard } from '@nestjs/throttler';
+import { DocsAuthMiddleware } from './common/security';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { ThrottlerGuard } from '@nestjs/throttler';
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
+    DocsAuthMiddleware,
   ],
 })
 export class AppModule {}
