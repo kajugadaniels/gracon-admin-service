@@ -43,10 +43,10 @@ export function buildHelmetConfig(env: string): HelmetOptions {
       ? { maxAge: 31_536_000, includeSubDomains: true, preload: true }
       : false,
     ieNoOpen: true,
-    noSniff:                   true,
-    originAgentCluster:        true,
+    noSniff: true,
+    originAgentCluster: true,
     permittedCrossDomainPolicies: { permittedPolicies: 'none' },
-    referrerPolicy:            { policy: 'no-referrer' },
-    xssFilter:                 false,
+    referrerPolicy: { policy: 'no-referrer' },
+    xssFilter: false,
   };
 }
