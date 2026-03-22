@@ -1,98 +1,112 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Admin Service
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+> Part of the ID Verification Platform microservice architecture.
+> Handles all administrative operations — user management, audit trails,
+> security monitoring, and platform statistics.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## What This Service Does
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+This service is the internal admin backend. It is never accessible to
+regular users. It provides:
 
-## Project setup
+- **Admin authentication** — separate JWT system with its own secret,
+  shorter expiry (8h access / 24h refresh), and token type enforcement
+- **User management** — view all users, search, filter, deactivate,
+  reactivate, force revoke sessions, manually set ID verification status
+- **Sensitive data access** — SUPER_ADMIN can decrypt NIDs and PIDs with
+  full audit logging of every reveal
+- **Admin account management** — SUPER_ADMIN creates ADMIN accounts via
+  invite-link flow. New admins receive an email, click a link, set their
+  own password, and are activated.
+- **ID verification audit** — full history of every verification attempt
+  across all users with scores, fail reasons, and IP addresses
+- **Admin audit log** — immutable trail of every admin action
+- **Security event log** — real-time feed of security events written by
+  the auth service (failed logins, rate limit hits, token reuse, etc.)
+- **Platform statistics** — aggregated metrics for the dashboard
 
-```bash
-$ npm install
+---
+
+## Architecture Position
+```
+app/admin (Next.js admin frontend)
+      │
+      ▼
+api/admin (this service — port 3001)
+      │
+      ▼
+Neon Postgres (shared with api/auth — read/write, no migrations)
 ```
 
-## Compile and run the project
+This service shares the Neon Postgres database with `api/auth/` but
+**never runs `prisma migrate`**. Only `api/auth/` owns schema migrations.
+This service runs `prisma generate` only.
 
+---
+
+## Key Security Properties
+
+- Uses a completely separate `ADMIN_JWT_SECRET` — user tokens are
+  cryptographically rejected on every admin endpoint
+- JWT payload includes `type: "admin"` — provides a secondary check
+  even if secrets were accidentally shared
+- NID and PID decryption requires `SUPER_ADMIN` role and is logged
+  to `AdminAuditLog` on every call
+- All admin actions are logged to an immutable audit trail
+- Swagger docs protected by basic auth in production
+- Rate limiting: 30 requests/min general, 5/min auth, 10/10min strict
+
+---
+
+## Admin Roles
+
+| Role | Created by | Can do |
+|---|---|---|
+| `SUPER_ADMIN` | Prisma seed script only | Everything including creating ADMINs |
+| `ADMIN` | SUPER_ADMIN via admin panel | All actions except decrypt NID/PID and create admins |
+
+---
+
+## Admin Account Invite Flow
+
+1. SUPER_ADMIN submits new admin form (name, email, phone)
+2. Service creates Admin record with `isVerified=false`, `passwordHash=null`
+3. 48-hour invite token generated and emailed to the new admin
+4. New admin clicks link → `/set-password` page
+5. Admin sets their password → account activated → redirected to login
+
+---
+
+## Running Locally
 ```bash
-# development
-$ npm run start
+# 1. Copy schema from auth service (never edit independently)
+cp ../auth/prisma/schema.prisma prisma/schema.prisma
 
-# watch mode
-$ npm run start:dev
+# 2. Install dependencies
+npm install
 
-# production mode
-$ npm run start:prod
+# 3. Generate Prisma client (never run prisma migrate here)
+npx prisma generate
+
+# 4. Start in development mode
+npm run start:dev
 ```
 
-## Run tests
+Service: `http://localhost:3001/api/v1`
+Docs:    `http://localhost:3001/docs`
 
-```bash
-# unit tests
-$ npm run test
+> The SUPER_ADMIN must be seeded in `api/auth/` before this service
+> can authenticate any admin. Run `npx prisma db seed` in `api/auth/`.
 
-# e2e tests
-$ npm run test:e2e
+---
 
-# test coverage
-$ npm run test:cov
-```
+## Related Services
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+| Service | Location | Purpose |
+|---|---|---|
+| Auth Service | `api/auth/` | User auth, owns DB migrations |
+| AI Engine | `engine/` | Face comparison, liveness |
+| User App | `app/app/` | User-facing frontend |
+| Admin App | `app/admin/` | Admin dashboard frontend |
