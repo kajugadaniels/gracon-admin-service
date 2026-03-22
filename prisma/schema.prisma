@@ -1,0 +1,284 @@
+// Prisma schema — ID Verification Platform
+// Run `npx prisma migrate dev` to apply changes
+// Run `npx prisma generate` to regenerate the TypeScript client
+// IMPORTANT: Only api/auth/ runs migrations — api/admin/ only runs `prisma generate`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+model User {
+  id                   String    @id @default(uuid())
+  email                String    @unique
+  phoneNumber          String?
+  passwordHash         String
+  imageUrl             String?
+  isVerified           Boolean   @default(false)
+  isActive             Boolean   @default(false)
+  isIdVerified         Boolean   @default(false)
+  idVerifiedAt         DateTime?
+  verificationAttempts Int       @default(0)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  citizenIdentity        CitizenIdentity?
+  platformId             PlatformId?
+  emailVerificationToken EmailVerificationToken?
+  idVerifications        IdVerification[]
+  refreshTokens          RefreshToken[]
+  passwordResetTokens    PasswordResetToken[]
+  // Security events written by auth service — read by admin service
+  securityEvents         SecurityEventLog[]
+
+  @@map("users")
+}
+
+// ─── Citizen Identities ───────────────────────────────────────────────────────
+model CitizenIdentity {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  nidEncrypted   String
+  nidHash        String   @unique
+  surName        String
+  postNames      String
+  sex            String
+  dateOfBirth    DateTime
+  countryOfBirth String
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("citizen_identities")
+}
+
+// ─── Platform IDs ─────────────────────────────────────────────────────────────
+model PlatformId {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  pidEncrypted String
+  pidHash      String   @unique
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("platform_ids")
+}
+
+// ─── Email Verification Tokens ────────────────────────────────────────────────
+model EmailVerificationToken {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  tokenHash String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("email_verification_tokens")
+}
+
+// ─── Password Reset Tokens ────────────────────────────────────────────────────
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+// ─── ID Verifications ─────────────────────────────────────────────────────────
+model IdVerification {
+  id             String   @id @default(uuid())
+  userId         String
+  attemptNumber  Int
+  documentMatch  Boolean
+  faceScore      Float
+  livenessScore  Float
+  compositeScore Float
+  passed         Boolean
+  failReason     String?
+  ipAddress      String?
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("id_verifications")
+}
+
+// ─── Refresh Tokens ───────────────────────────────────────────────────────────
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  tokenType String   @default("full")
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ─── Security Event Log ───────────────────────────────────────────────────────
+// Written by api/auth/ on key security events.
+// Read-only by api/admin/ — gives admins real-time threat visibility.
+// userId is nullable — some events occur before a user is identified
+// (e.g. failed login with unknown email, rate limit exceeded).
+model SecurityEventLog {
+  id        String        @id @default(uuid())
+  userId    String?
+  eventType SecurityEvent
+  metadata  Json?         // IP, attempt count, user agent, any extra context
+  ipAddress String?
+  createdAt DateTime      @default(now())
+
+  // SetNull on delete — preserve the security log even if user is deactivated
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("security_event_logs")
+}
+
+enum SecurityEvent {
+  LOGIN_FAILED
+  LOGIN_SUCCESS
+  VERIFICATION_FAILED
+  VERIFICATION_PASSED
+  PASSWORD_RESET_REQUESTED
+  PASSWORD_CHANGED
+  SESSIONS_REVOKED_BY_USER
+  REVOKED_TOKEN_REUSE
+  RATE_LIMIT_EXCEEDED
+}
+
+// ─── Admins ───────────────────────────────────────────────────────────────────
+// Completely separate from users table.
+// SUPER_ADMIN: created via Prisma seed script only — never through any API.
+// ADMIN: created by a logged-in SUPER_ADMIN through the admin panel.
+// passwordHash is null until admin accepts their invite and sets a password.
+model Admin {
+  id           String    @id @default(uuid())
+  firstName    String
+  lastName     String
+  email        String    @unique
+  phoneNumber  String?
+  passwordHash String?   // null until invite is accepted and password is set
+  role         AdminRole @default(ADMIN)
+  isVerified   Boolean   @default(false) // true after invite link is accepted
+  isActive     Boolean   @default(true)  // SUPER_ADMIN can deactivate an admin
+  createdById  String?   // which SUPER_ADMIN created this admin (null for seeded)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Self-referential relation — tracks who created whom
+  createdBy     Admin?  @relation("AdminCreatedBy", fields: [createdById], references: [id])
+  createdAdmins Admin[] @relation("AdminCreatedBy")
+
+  adminRefreshTokens AdminRefreshToken[]
+  adminInviteToken   AdminInviteToken?
+  auditLogs          AdminAuditLog[]
+
+  @@map("admins")
+}
+
+enum AdminRole {
+  ADMIN
+  SUPER_ADMIN
+}
+
+// ─── Admin Refresh Tokens ─────────────────────────────────────────────────────
+// Separate from user refresh tokens — never mixed.
+// Signed with ADMIN_JWT_SECRET, not JWT_SECRET.
+model AdminRefreshToken {
+  id        String   @id @default(uuid())
+  adminId   String
+  tokenHash String   @unique
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@map("admin_refresh_tokens")
+}
+
+// ─── Admin Invite Tokens ──────────────────────────────────────────────────────
+// Sent to new admins via email when SUPER_ADMIN creates their account.
+// Raw token lives only in the email link — hash stored in DB.
+// Admin uses this to set their password and activate their account.
+// 48-hour expiry — longer than user verification to account for time zones.
+model AdminInviteToken {
+  id        String   @id @default(uuid())
+  adminId   String   @unique // one active invite per admin at a time
+  tokenHash String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@map("admin_invite_tokens")
+}
+
+// ─── Admin Audit Log ──────────────────────────────────────────────────────────
+// Every admin action is recorded here — immutable audit trail.
+// Never deleted — even deactivated admins' actions are preserved.
+// metadata field stores context: reason, old value, new value, etc.
+model AdminAuditLog {
+  id           String      @id @default(uuid())
+  adminId      String
+  action       AdminAction
+  targetUserId String?     // which user was affected (null for non-user actions)
+  metadata     Json?       // structured context for this specific action
+  ipAddress    String?
+  createdAt    DateTime    @default(now())
+
+  admin Admin @relation(fields: [adminId], references: [id])
+
+  @@index([adminId])
+  @@index([targetUserId])
+  @@index([createdAt])
+  @@index([action])
+  @@map("admin_audit_logs")
+}
+
+enum AdminAction {
+  // User account actions
+  USER_DEACTIVATED
+  USER_REACTIVATED
+  SESSIONS_REVOKED
+  ID_STATUS_CHANGED
+
+  // Sensitive data access — always logged
+  NID_DECRYPTED
+  PID_DECRYPTED
+  USER_DETAIL_VIEWED
+
+  // Admin management
+  ADMIN_CREATED
+  ADMIN_DEACTIVATED
+  ADMIN_REACTIVATED
+  ADMIN_INVITE_RESENT
+}
