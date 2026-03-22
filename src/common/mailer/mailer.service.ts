@@ -2,7 +2,7 @@
 // Currently handles the admin account invite email.
 // Uses Handlebars templates for HTML emails.
 import { Injectable, Logger } from '@nestjs/common';
-import { MailerService } from '@nestjs/mailer';
+import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
 
 interface SendAdminInviteParams {
@@ -27,7 +27,11 @@ export class AppMailerService {
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
   ) {
-    this.frontendUrl = this.config.get<string>('ADMIN_FRONTEND_URL');
+    const frontendUrl = this.config.get<string>('ADMIN_FRONTEND_URL');
+    if (!frontendUrl) {
+      throw new Error('ADMIN_FRONTEND_URL environment variable is not set');
+    }
+    this.frontendUrl = frontendUrl;
   }
 
   /**
