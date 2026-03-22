@@ -3,6 +3,7 @@
 // Never throws — logging failure must never break the admin flow.
 // Every action is logged AFTER it succeeds — never before.
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdminAction } from '@prisma/client';
 
@@ -33,7 +34,7 @@ export class AuditService {
           action: params.action,
           targetUserId: params.targetUserId ?? null,
           ipAddress: params.ipAddress ?? null,
-          metadata: params.metadata ?? null,
+          metadata: (params.metadata as Prisma.InputJsonValue | undefined) ?? Prisma.JsonNull,
         },
       });
     } catch (error) {
