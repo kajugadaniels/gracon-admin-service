@@ -15,14 +15,21 @@ import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('ADMIN_JWT_SECRET'),
-        signOptions: {
-          expiresIn: config.get<string>('ADMIN_JWT_ACCESS_EXPIRY', '8h'),
-          issuer: 'id-verification-admin',
-          audience: 'id-verification-admin-panel',
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>('ADMIN_JWT_SECRET');
+        if (!secret) throw new Error('ADMIN_JWT_SECRET is not set');
+        return {
+          secret,
+          signOptions: {
+            // Cast required: config.get returns string, but @nestjs/jwt expects
+            // the ms StringValue branded type — safe at runtime, jsonwebtoken
+            // accepts any valid duration string
+            expiresIn: config.get('ADMIN_JWT_ACCESS_EXPIRY', '8h') as '8h',
+            issuer:   'id-verification-admin',
+            audience: 'id-verification-admin-panel',
+          },
+        };
+      },
     }),
   ],
   controllers: [AdminAuthController],
