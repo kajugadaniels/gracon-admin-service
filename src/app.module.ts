@@ -11,6 +11,7 @@ import { AdminAuthModule } from './modules/auth/admin-auth.module';
 import { AdminAuthGuard } from './common/guards/admin-auth.guard';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { validateEnv } from './common/config/env.validation';
+import { TasksModule } from './common/tasks/tasks.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { validateEnv } from './common/config/env.validation';
     AuditModule,
     AppMailerModule,
     AdminAuthModule,
+    TasksModule,
   ],
   providers: [
     // ThrottlerGuard applied first — rate limit before auth check
