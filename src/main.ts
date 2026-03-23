@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import { json } from 'express';
 import { AppModule } from './app.module';
 import { ThrottlerExceptionFilter } from './common/filters/throttler-exception.filter';
 import { DocsAuthMiddleware } from './common/security/docs-auth.middleware';
@@ -31,6 +32,12 @@ async function bootstrap() {
   // ── Security headers ────────────────────────────────────────────
   // Helmet must be first — sets headers on every response
   app.use(helmet(buildHelmetConfig(env)));
+
+  // ── Body size limit ─────────────────────────────────────────────
+  // NestJS/Express defaults to 100kb. Enforce a strict 10kb cap on all
+  // JSON endpoints — no legitimate admin API payload exceeds this.
+  // Prevents large-body DoS before any auth guard or route handler runs.
+  app.use(json({ limit: '10kb' }));
 
   // ── CORS ────────────────────────────────────────────────────────
   // Only the admin frontend origin is allowed
