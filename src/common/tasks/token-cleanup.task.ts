@@ -4,7 +4,7 @@
 // Runs at 02:30 AM daily — low-traffic window.
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { PrismaService } from '../../../auth/src/common/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class TokenCleanupTask {
@@ -17,6 +17,7 @@ export class TokenCleanupTask {
     const now = new Date();
 
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const { count } = await this.prisma.adminRefreshToken.deleteMany({
         where: {
           OR: [
