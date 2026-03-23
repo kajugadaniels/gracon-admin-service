@@ -3,6 +3,9 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# bcrypt requires native compilation — install build tools for Alpine
+RUN apk add --no-cache python3 make g++
+
 # Install all dependencies (including devDependencies needed for build)
 COPY package*.json ./
 RUN npm ci
@@ -18,6 +21,9 @@ RUN npm run build
 FROM node:22-alpine AS production
 
 WORKDIR /app
+
+# bcrypt requires native compilation in the production stage too
+RUN apk add --no-cache python3 make g++
 
 # Install only production dependencies
 COPY package*.json ./
