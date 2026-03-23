@@ -43,7 +43,9 @@ export interface AdminUserDetail {
   // Last 5 verification attempts
   verifications: VerificationSummary[];
 
-  // Active sessions
+  // Active sessions — capped at 10. True means the user has >10 active
+  // sessions, which is suspicious and should be flagged in the admin UI.
+  sessionsTruncated: boolean;
   sessions: SessionSummary[];
 
   // Last 10 security events
