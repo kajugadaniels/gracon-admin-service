@@ -1,7 +1,30 @@
-// AdminStatsService — platform overview statistics for the admin dashboard.
-// All queries run in parallel using Promise.all() — never sequentially.
-// Results are cached in memory for 5 minutes — stat freshness vs DB load tradeoff.
-// Cache is invalidated on expiry only — no manual invalidation needed for dashboard stats.
+/**
+ * AdminStatsService — platform overview statistics for the admin dashboard.
+ *
+ * All queries run in parallel using Promise.all() — never sequentially.
+ * Results are cached for 5 minutes to limit DB load on frequent dashboard refreshes.
+ *
+ * ─── SCALING LIMITATION — READ BEFORE ADDING INSTANCES ───────────────────────
+ *
+ * The cache is stored in a class property (process memory). This works correctly
+ * in a single-instance deployment. It breaks in multi-instance deployments:
+ *
+ *   - Each instance holds its own independent cache.
+ *   - Instance A may serve 4-minute-old data while instance B just recomputed.
+ *   - Clients behind a load balancer receive inconsistent snapshots depending
+ *     on which instance handles each request.
+ *   - invalidateCache() only clears one instance's cache — the others remain stale.
+ *
+ * This is intentional for the current single-instance deployment and acceptable
+ * because stats are inherently approximate (5-min TTL) and this avoids a Redis
+ * dependency at this stage.
+ *
+ * BEFORE SCALING TO MULTIPLE INSTANCES:
+ *   Replace the in-memory CacheEntry with a Redis key using ioredis or
+ *   @nestjs/cache-manager with a Redis store. Key: "admin:stats:overview",
+ *   TTL: CACHE_TTL_MS. invalidateCache() must call redis.del() on that key so
+ *   all instances see the invalidation immediately.
+ */
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { Prisma, SecurityEvent } from '@prisma/client';
@@ -53,7 +76,8 @@ interface CacheEntry {
 export class AdminStatsService {
   private readonly logger = new Logger(AdminStatsService.name);
 
-  // 5-minute in-memory cache — no Redis dependency
+  // 5-minute TTL — balances stat freshness against DB query load.
+  // WARNING: per-instance only — see scaling limitation note at top of file.
   private readonly CACHE_TTL_MS = 5 * 60 * 1_000;
   private cache: CacheEntry | null = null;
 
@@ -247,9 +271,13 @@ export class AdminStatsService {
   // ─── Cache control ────────────────────────────────────────────────────────
 
   /**
-   * Force-invalidates the stats cache.
+   * Force-invalidates the stats cache on this instance.
    * Called by SUPER_ADMIN when they need fresh numbers immediately.
-   * Next call to getOverviewStats() will recompute from the database.
+   * Next call to getOverviewStats() on this instance will recompute from the DB.
+   *
+   * WARNING: in a multi-instance deployment this only clears the cache on the
+   * instance that handles the invalidation request. Other instances remain stale
+   * until their TTL expires. Migrate to Redis del() before scaling horizontally.
    */
   invalidateCache(): void {
     this.cache = null;
