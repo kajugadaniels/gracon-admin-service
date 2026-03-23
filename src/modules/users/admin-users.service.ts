@@ -200,13 +200,17 @@ export class AdminUsersService {
             createdAt: true,
           },
         },
-        // Active sessions only — revoked and expired excluded
+        // Active sessions only — revoked and expired excluded.
+        // Fetch 11 to detect truncation without a second query — if 11 come
+        // back the user has more than 10 active sessions, which is suspicious
+        // and surfaced as sessionsTruncated: true in the response.
         refreshTokens: {
           where: {
             revoked: false,
             expiresAt: { gt: new Date() },
           },
           orderBy: { createdAt: 'desc' },
+          take: 11,
           select: {
             id: true,
             tokenType: true,
@@ -309,7 +313,10 @@ export class AdminUsersService {
         createdAt: v.createdAt,
       })),
 
-      sessions: user.refreshTokens.map((s) => ({
+      // sessionsTruncated: true means the user has >10 active sessions —
+      // a normal user never has more than 1–3. Flag this for the admin UI.
+      sessionsTruncated: user.refreshTokens.length > 10,
+      sessions: user.refreshTokens.slice(0, 10).map((s) => ({
         id: s.id,
         tokenType: s.tokenType,
         ipAddress: s.ipAddress ?? null,
