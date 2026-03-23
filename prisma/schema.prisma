@@ -35,6 +35,15 @@ model User {
   // Security events written by auth service — read by admin service
   securityEvents         SecurityEventLog[]
 
+  // ── Query pattern indexes ──────────────────────────────────────────────────
+  // isActive and isIdVerified are boolean but queried with equality predicates
+  // + ORDER BY createdAt — compound indexes eliminate the sort step entirely.
+  // (isVerified, isIdVerified, createdAt) covers the "pending ID verification"
+  // filter (isVerified=true AND isIdVerified=false) which is the primary admin
+  // dashboard workflow. createdAt alone covers unfiltered paginated list queries.
+  @@index([createdAt])
+  @@index([isActive, createdAt])
+  @@index([isVerified, isIdVerified, createdAt])
   @@map("users")
 }
 
@@ -115,6 +124,9 @@ model IdVerification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+  // Stats queries: COUNT WHERE passed=? AND createdAt>=? — used by AdminStatsService
+  // for verificationsPassed / verificationsFailed counts with date windows
+  @@index([passed, createdAt])
   @@map("id_verifications")
 }
 
@@ -155,6 +167,14 @@ model SecurityEventLog {
   @@index([userId])
   @@index([eventType])
   @@index([createdAt])
+  // Compound indexes — the single-column indexes above remain valid for queries
+  // without a date predicate. These cover the three high-frequency patterns:
+  // 1. Stats: WHERE eventType=? AND createdAt>=? (LOGIN_FAILED/RATE_LIMIT last 24h)
+  // 2. Admin user detail: WHERE userId=? ORDER BY createdAt DESC LIMIT 10
+  // 3. IP investigation: WHERE ipAddress=? ORDER BY createdAt DESC (brute-force workflow)
+  @@index([eventType, createdAt])
+  @@index([userId, createdAt])
+  @@index([ipAddress, createdAt])
   @@map("security_event_logs")
 }
 
