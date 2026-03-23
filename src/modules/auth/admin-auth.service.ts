@@ -17,18 +17,18 @@ import {
   NotFoundException,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { JwtService }         from '@nestjs/jwt';
-import { ConfigService }      from '@nestjs/config';
-import * as bcrypt            from 'bcrypt';
-import * as crypto            from 'crypto';
-import { PrismaService }      from '../../common/prisma/prisma.service';
-import { EncryptionService }  from '../../common/crypto/encryption.service';
-import { AuditService }       from '../../common/audit/audit.service';
-import { AppMailerService }   from '../../common/mailer/mailer.service';
-import { AdminLoginDto }      from './dto/admin-login.dto';
-import { CreateAdminDto }     from './dto/create-admin.dto';
-import { SetPasswordDto }     from './dto/set-password.dto';
-import { RefreshTokenDto }    from './dto/refresh-token.dto';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
+import { PrismaService } from '../../common/prisma/prisma.service';
+import { EncryptionService } from '../../common/crypto/encryption.service';
+import { AuditService } from '../../common/audit/audit.service';
+import { AppMailerService } from '../../common/mailer/mailer.service';
+import { AdminLoginDto } from './dto/admin-login.dto';
+import { CreateAdminDto } from './dto/create-admin.dto';
+import { SetPasswordDto } from './dto/set-password.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { AdminRole, AdminAction } from '@prisma/client';
 import {
   AdminAuthTokens,
@@ -49,20 +49,21 @@ export class AdminAuthService {
 
   // Refresh token: 24 hours — admin panel is not used 24/7
   private readonly REFRESH_TOKEN_EXPIRY: string;
-  private readonly REFRESH_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000;
+  // private readonly REFRESH_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000;
+  private readonly REFRESH_TOKEN_EXPIRY_MS: number;
 
   // Invite token: 48 hours — gives admin time to check email
   private readonly INVITE_TOKEN_EXPIRY_MS = 48 * 60 * 60 * 1000;
 
   constructor(
-    private readonly prisma:      PrismaService,
-    private readonly jwtService:  JwtService,
-    private readonly encryption:  EncryptionService,
-    private readonly audit:       AuditService,
-    private readonly mailer:      AppMailerService,
-    private readonly config:      ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
+    private readonly encryption: EncryptionService,
+    private readonly audit: AuditService,
+    private readonly mailer: AppMailerService,
+    private readonly config: ConfigService,
   ) {
-    this.ACCESS_TOKEN_EXPIRY  = config.get('ADMIN_JWT_ACCESS_EXPIRY',  '8h');
+    this.ACCESS_TOKEN_EXPIRY = config.get('ADMIN_JWT_ACCESS_EXPIRY', '8h');
     this.REFRESH_TOKEN_EXPIRY = config.get('ADMIN_JWT_REFRESH_EXPIRY', '24h');
   }
 
@@ -80,24 +81,23 @@ export class AdminAuthService {
    * enumeration of which gate failed.
    */
   async login(
-    dto:       AdminLoginDto,
+    dto: AdminLoginDto,
     ipAddress: string,
     userAgent: string,
   ): Promise<AdminLoginResult> {
-
     const admin = await this.prisma.admin.findUnique({
-      where:  { email: dto.email },
+      where: { email: dto.email },
       select: {
-        id:           true,
-        firstName:    true,
-        lastName:     true,
-        email:        true,
-        phoneNumber:  true,
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phoneNumber: true,
         passwordHash: true,
-        role:         true,
-        isVerified:   true,
-        isActive:     true,
-        createdAt:    true,
+        role: true,
+        isVerified: true,
+        isActive: true,
+        createdAt: true,
       },
     });
 
@@ -123,7 +123,7 @@ export class AdminAuthService {
     if (!admin.isVerified) {
       throw new ForbiddenException(
         'Your admin account has not been activated. ' +
-        'Please check your email for the invitation link.',
+          'Please check your email for the invitation link.',
       );
     }
 
@@ -131,7 +131,7 @@ export class AdminAuthService {
     if (!admin.isActive) {
       throw new ForbiddenException(
         'Your admin account has been deactivated. ' +
-        'Contact a SUPER_ADMIN for assistance.',
+          'Contact a SUPER_ADMIN for assistance.',
       );
     }
 
@@ -145,16 +145,16 @@ export class AdminAuthService {
 
     this.logger.log(
       `Admin login successful: ${admin.firstName} ${admin.lastName} ` +
-      `(${admin.email}) role=${admin.role} from IP: ${ipAddress}`,
+        `(${admin.email}) role=${admin.role} from IP: ${ipAddress}`,
     );
 
     return {
       success: true,
       message: 'Login successful.',
       data: {
-        accessToken:  tokens.accessToken,
+        accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
-        admin:        this.buildSafeProfile(admin),
+        admin: this.buildSafeProfile(admin),
       },
     };
   }
@@ -167,20 +167,20 @@ export class AdminAuthService {
    * Reuse of a revoked token triggers full session wipe (possible theft).
    */
   async refreshTokens(
-    dto:       RefreshTokenDto,
+    dto: RefreshTokenDto,
     ipAddress: string,
     userAgent: string,
   ): Promise<AdminAuthTokens> {
-    const tokenHash   = this.encryption.hash(dto.refreshToken);
+    const tokenHash = this.encryption.hash(dto.refreshToken);
     const storedToken = await this.prisma.adminRefreshToken.findUnique({
-      where:   { tokenHash },
+      where: { tokenHash },
       include: {
         admin: {
           select: {
-            id:         true,
-            email:      true,
-            role:       true,
-            isActive:   true,
+            id: true,
+            email: true,
+            role: true,
+            isActive: true,
             isVerified: true,
           },
         },
@@ -196,7 +196,7 @@ export class AdminAuthService {
       await this.revokeAllAdminTokens(storedToken.adminId);
       this.logger.warn(
         `Revoked admin refresh token reuse detected — ` +
-        `all sessions wiped for adminId: ${storedToken.adminId}`,
+          `all sessions wiped for adminId: ${storedToken.adminId}`,
       );
       throw new UnauthorizedException(
         'Refresh token has been revoked. Please log in again.',
@@ -210,15 +210,13 @@ export class AdminAuthService {
     }
 
     if (!storedToken.admin.isActive) {
-      throw new UnauthorizedException(
-        'Admin account is not active.',
-      );
+      throw new UnauthorizedException('Admin account is not active.');
     }
 
     // Rotate: revoke old token, issue new pair
     await this.prisma.adminRefreshToken.update({
       where: { id: storedToken.id },
-      data:  { revoked: true },
+      data: { revoked: true },
     });
 
     const tokens = await this.issueTokens(
@@ -242,13 +240,13 @@ export class AdminAuthService {
    */
   async logout(
     refreshToken: string,
-    adminId:      string,
+    adminId: string,
   ): Promise<{ success: boolean; message: string }> {
     const tokenHash = this.encryption.hash(refreshToken);
 
     await this.prisma.adminRefreshToken.updateMany({
       where: { tokenHash, revoked: false },
-      data:  { revoked: true },
+      data: { revoked: true },
     });
 
     this.logger.log(`Admin logout: ${adminId}`);
@@ -269,15 +267,24 @@ export class AdminAuthService {
    *   5. Log the action to AdminAuditLog
    */
   async createAdmin(
-    dto:             CreateAdminDto,
-    createdByAdminId:string,
-    createdByName:   string,
-    ipAddress:       string,
+    dto: CreateAdminDto,
+    createdByAdminId: string,
+    createdByName: string,
+    ipAddress: string,
   ): Promise<{ success: boolean; message: string; data: SafeAdminProfile }> {
+    // Fetch the SUPER_ADMIN's real name — never trust req.user for display names
+    const creator = await this.prisma.admin.findUnique({
+      where:  { id: createdByAdminId },
+      select: { firstName: true, lastName: true, email: true },
+    });
+
+    const createdByName = creator
+      ? `${creator.firstName} ${creator.lastName}`
+      : creator?.email ?? 'SUPER_ADMIN'
 
     // Check email uniqueness
     const existing = await this.prisma.admin.findUnique({
-      where:  { email: dto.email },
+      where: { email: dto.email },
       select: { id: true },
     });
 
@@ -288,9 +295,9 @@ export class AdminAuthService {
     }
 
     // Generate invite token — raw token goes in email, hash in DB
-    const rawToken   = crypto.randomBytes(32).toString('hex');
-    const tokenHash  = this.encryption.hash(rawToken);
-    const expiresAt  = new Date(Date.now() + this.INVITE_TOKEN_EXPIRY_MS);
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = this.encryption.hash(rawToken);
+    const expiresAt = new Date(Date.now() + this.INVITE_TOKEN_EXPIRY_MS);
 
     let newAdmin: SafeAdminProfile;
 
@@ -299,14 +306,14 @@ export class AdminAuthService {
         // Create the admin account — no password yet
         const admin = await tx.admin.create({
           data: {
-            firstName:   dto.firstName,
-            lastName:    dto.lastName,
-            email:       dto.email,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            email: dto.email,
             phoneNumber: dto.phoneNumber ?? null,
-            passwordHash:null,       // set when invite is accepted
-            role:        AdminRole.ADMIN,
-            isVerified:  false,      // activated when invite link is clicked
-            isActive:    true,
+            passwordHash: null, // set when invite is accepted
+            role: AdminRole.ADMIN,
+            isVerified: false, // activated when invite link is clicked
+            isActive: true,
             createdById: createdByAdminId,
           },
         });
@@ -314,10 +321,10 @@ export class AdminAuthService {
         // Store hashed invite token
         await tx.adminInviteToken.create({
           data: {
-            adminId:   admin.id,
+            adminId: admin.id,
             tokenHash,
             expiresAt,
-            used:      false,
+            used: false,
           },
         });
 
@@ -343,36 +350,35 @@ export class AdminAuthService {
 
     // Send invite email — outside transaction, non-blocking
     await this.mailer.sendAdminInviteEmail({
-      to:            dto.email,
-      firstName:     dto.firstName,
-      lastName:      dto.lastName,
-      email:         dto.email,
+      to: dto.email,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      email: dto.email,
       createdByName,
-      adminId:       newAdmin.adminId,
-      token:         rawToken,
+      adminId: newAdmin.adminId,
+      token: rawToken,
     });
 
     // Audit log — every admin creation is recorded
     void this.audit.log({
-      adminId:     createdByAdminId,
-      action:      AdminAction.ADMIN_CREATED,
+      adminId: createdByAdminId,
+      action: AdminAction.ADMIN_CREATED,
       metadata: {
-        newAdminId:    newAdmin.adminId,
+        newAdminId: newAdmin.adminId,
         newAdminEmail: dto.email,
-        newAdminName:  `${dto.firstName} ${dto.lastName}`,
+        newAdminName: `${dto.firstName} ${dto.lastName}`,
       },
       ipAddress,
     });
 
     this.logger.log(
       `Admin account created: ${dto.firstName} ${dto.lastName} ` +
-      `(${dto.email}) by adminId: ${createdByAdminId}`,
+        `(${dto.email}) by adminId: ${createdByAdminId}`,
     );
 
     return {
       success: true,
-      message:
-        `Admin account created. An invite email has been sent to ${dto.email}.`,
+      message: `Admin account created. An invite email has been sent to ${dto.email}.`,
       data: newAdmin,
     };
   }
@@ -388,9 +394,8 @@ export class AdminAuthService {
    */
   async validateInviteToken(
     adminId: string,
-    token:   string,
+    token: string,
   ): Promise<{ valid: boolean; message: string; adminName?: string }> {
-
     const result = await this.findValidInviteToken(adminId, token);
 
     if (!result.valid) {
@@ -399,13 +404,13 @@ export class AdminAuthService {
 
     // Return the admin's name so the frontend can personalise the page
     const admin = await this.prisma.admin.findUnique({
-      where:  { id: adminId },
+      where: { id: adminId },
       select: { firstName: true, lastName: true },
     });
 
     return {
-      valid:     true,
-      message:   'Invite link is valid.',
+      valid: true,
+      message: 'Invite link is valid.',
       adminName: admin ? `${admin.firstName} ${admin.lastName}` : undefined,
     };
   }
@@ -425,14 +430,10 @@ export class AdminAuthService {
    * After this call the admin can log in for the first time.
    */
   async setPassword(
-    dto:       SetPasswordDto,
+    dto: SetPasswordDto,
     ipAddress: string,
   ): Promise<{ success: boolean; message: string }> {
-
-    const tokenLookup = await this.findValidInviteToken(
-      dto.adminId,
-      dto.token,
-    );
+    const tokenLookup = await this.findValidInviteToken(dto.adminId, dto.token);
 
     if (!tokenLookup.valid || !tokenLookup.record) {
       throw new BadRequestException(tokenLookup.reason);
@@ -453,13 +454,13 @@ export class AdminAuthService {
       // Mark invite token used — prevents replay
       await tx.adminInviteToken.update({
         where: { id: tokenLookup.record!.id },
-        data:  { used: true },
+        data: { used: true },
       });
     });
 
     this.logger.log(
       `Admin account activated via invite link: adminId=${dto.adminId} ` +
-      `from IP: ${ipAddress}`,
+        `from IP: ${ipAddress}`,
     );
 
     return {
@@ -478,83 +479,64 @@ export class AdminAuthService {
    * Only callable by SUPER_ADMIN.
    */
   async resendInvite(
-    targetAdminId:   string,
-    requestingAdminId: string,
-    requestingAdminName: string,
-    ipAddress:       string,
+    targetAdminId:      string,
+    requestingAdminId:  string,
+    ipAddress:          string,
   ): Promise<{ success: boolean; message: string }> {
 
     const admin = await this.prisma.admin.findUnique({
       where:  { id: targetAdminId },
       select: {
-        id:         true,
-        firstName:  true,
-        lastName:   true,
-        email:      true,
-        isVerified: true,
+        id: true, firstName: true, lastName: true,
+        email: true, isVerified: true,
       },
     });
 
-    if (!admin) {
-      throw new NotFoundException('Admin account not found.');
-    }
-
+    if (!admin) throw new NotFoundException('Admin account not found.');
     if (admin.isVerified) {
       throw new BadRequestException(
-        'This admin account is already verified. ' +
-        'An invite cannot be resent to an active account.',
+        'This admin account is already verified. Cannot resend invite.',
       );
     }
 
-    // Invalidate any existing unused invite tokens
-    await this.prisma.adminInviteToken.updateMany({
-      where: { adminId: targetAdminId, used: false },
-      data:  { used: true },
-    });
-
-    // Issue a fresh invite token
     const rawToken  = crypto.randomBytes(32).toString('hex');
     const tokenHash = this.encryption.hash(rawToken);
     const expiresAt = new Date(Date.now() + this.INVITE_TOKEN_EXPIRY_MS);
 
-    await this.prisma.adminInviteToken.create({
-      data: {
-        adminId:   targetAdminId,
-        tokenHash,
-        expiresAt,
-        used:      false,
-      },
+    // Atomic — if create fails, old tokens stay valid (no data loss)
+    await this.prisma.$transaction(async (tx) => {
+      await tx.adminInviteToken.updateMany({
+        where: { adminId: targetAdminId, used: false },
+        data:  { used: true },
+      });
+      await tx.adminInviteToken.create({
+        data: { adminId: targetAdminId, tokenHash, expiresAt, used: false },
+      });
     });
 
+    // Fetch requesting admin name for the email
+    const requester = await this.prisma.admin.findUnique({
+      where:  { id: requestingAdminId },
+      select: { firstName: true, lastName: true },
+    });
+    const requestingName = requester
+      ? `${requester.firstName} ${requester.lastName}`
+      : 'SUPER_ADMIN';
+
     await this.mailer.sendAdminInviteEmail({
-      to:            admin.email,
-      firstName:     admin.firstName,
-      lastName:      admin.lastName,
-      email:         admin.email,
-      createdByName: requestingAdminName,
-      adminId:       admin.id,
-      token:         rawToken,
+      to: admin.email, firstName: admin.firstName, lastName: admin.lastName,
+      email: admin.email, createdByName: requestingName,
+      adminId: admin.id, token: rawToken,
     });
 
     void this.audit.log({
-      adminId:     requestingAdminId,
-      action:      AdminAction.ADMIN_INVITE_RESENT,
-      metadata: {
-        targetAdminId,
-        targetEmail: admin.email,
-      },
+      adminId:  requestingAdminId,
+      action:   AdminAction.ADMIN_INVITE_RESENT,
+      metadata: { targetAdminId, targetEmail: admin.email },
       ipAddress,
     });
 
-    this.logger.log(
-      `Invite resent for adminId: ${targetAdminId} ` +
-      `by adminId: ${requestingAdminId}`,
-    );
-
-    return {
-      success: true,
-      message: `Invite email resent to ${admin.email}.`,
-    };
+    return { success: true, message: `Invite email resent to ${admin.email}.` };
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────
@@ -565,16 +547,16 @@ export class AdminAuthService {
    * Refresh token is a random hex string — hash stored in DB.
    */
   private async issueTokens(
-    adminId:   string,
-    email:     string,
-    role:      AdminRole,
+    adminId: string,
+    email: string,
+    role: AdminRole,
     ipAddress: string,
     userAgent: string,
   ): Promise<AdminAuthTokens> {
     // JWT access token
     const accessToken = this.jwtService.sign(
       {
-        sub:  adminId,
+        sub: adminId,
         email,
         role,
         type: 'admin', // distinguishes from user tokens
@@ -583,14 +565,14 @@ export class AdminAuthService {
         // Cast required: ACCESS_TOKEN_EXPIRY is string, but @nestjs/jwt expects
         // the ms StringValue branded type — safe at runtime
         expiresIn: this.ACCESS_TOKEN_EXPIRY as '8h',
-        secret:    this.config.get<string>('ADMIN_JWT_SECRET'),
+        secret: this.config.get<string>('ADMIN_JWT_SECRET'),
       },
     );
 
     // Refresh token — cryptographically random, hash stored in DB
-    const rawRefreshToken  = crypto.randomBytes(40).toString('hex');
+    const rawRefreshToken = crypto.randomBytes(40).toString('hex');
     const refreshTokenHash = this.encryption.hash(rawRefreshToken);
-    const expiresAt        = new Date(Date.now() + this.REFRESH_TOKEN_EXPIRY_MS);
+    const expiresAt = new Date(Date.now() + this.REFRESH_TOKEN_EXPIRY_MS);
 
     await this.prisma.adminRefreshToken.create({
       data: {
@@ -598,11 +580,31 @@ export class AdminAuthService {
         tokenHash: refreshTokenHash,
         expiresAt,
         ipAddress,
-        userAgent:  userAgent?.substring(0, 512),
+        userAgent: userAgent?.substring(0, 512),
       },
     });
 
     return { accessToken, refreshToken: rawRefreshToken };
+  }
+
+  // In constructor, after reading config:
+  const refreshExpiry = this.config.get('ADMIN_JWT_REFRESH_EXPIRY', '24h');
+  this.REFRESH_TOKEN_EXPIRY_MS = this.parseExpiryToMs(refreshExpiry);
+
+  // Add this private helper at the bottom of the class:
+  private parseExpiryToMs(expiry: string): number {
+    const unit  = expiry.slice(-1);
+    const value = parseInt(expiry.slice(0, -1), 10);
+    const map: Record<string, number> = {
+      s: 1_000,
+      m: 60_000,
+      h: 3_600_000,
+      d: 86_400_000,
+    };
+    if (!map[unit] || isNaN(value)) {
+      throw new Error(`Invalid expiry format: "${expiry}". Use e.g. "24h", "7d".`);
+    }
+    return value * map[unit];
   }
 
   /**
@@ -612,7 +614,7 @@ export class AdminAuthService {
   private async revokeAllAdminTokens(adminId: string): Promise<void> {
     await this.prisma.adminRefreshToken.updateMany({
       where: { adminId, revoked: false },
-      data:  { revoked: true },
+      data: { revoked: true },
     });
   }
 
@@ -621,22 +623,22 @@ export class AdminAuthService {
    * Returns the DB record so the caller can mark it used.
    */
   private async findValidInviteToken(
-    adminId:  string,
+    adminId: string,
     rawToken: string,
   ): Promise<
-    | { valid: true;  record: { id: string }; reason: null }
-    | { valid: false; record: null;            reason: string }
+    | { valid: true; record: { id: string }; reason: null }
+    | { valid: false; record: null; reason: string }
   > {
     const tokenHash = this.encryption.hash(rawToken);
 
     const record = await this.prisma.adminInviteToken.findFirst({
-      where:  { adminId, tokenHash },
+      where: { adminId, tokenHash },
       select: { id: true, used: true, expiresAt: true },
     });
 
     if (!record) {
       return {
-        valid:  false,
+        valid: false,
         record: null,
         reason: 'Invalid or expired invite link. Please request a new one.',
       };
@@ -644,7 +646,7 @@ export class AdminAuthService {
 
     if (record.used) {
       return {
-        valid:  false,
+        valid: false,
         record: null,
         reason:
           'This invite link has already been used. ' +
@@ -654,7 +656,7 @@ export class AdminAuthService {
 
     if (new Date() > record.expiresAt) {
       return {
-        valid:  false,
+        valid: false,
         record: null,
         reason:
           'This invite link has expired (48-hour limit). ' +
@@ -669,22 +671,22 @@ export class AdminAuthService {
    * Builds a safe admin profile — never includes passwordHash.
    */
   private buildSafeProfile(admin: {
-    id:          string;
-    firstName:   string;
-    lastName:    string;
-    email:       string;
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
     phoneNumber?: string | null;
-    role:        AdminRole;
-    createdAt:   Date;
+    role: AdminRole;
+    createdAt: Date;
   }): SafeAdminProfile {
     return {
-      adminId:     admin.id,
-      firstName:   admin.firstName,
-      lastName:    admin.lastName,
-      email:       admin.email,
+      adminId: admin.id,
+      firstName: admin.firstName,
+      lastName: admin.lastName,
+      email: admin.email,
       phoneNumber: admin.phoneNumber ?? null,
-      role:        admin.role,
-      createdAt:   admin.createdAt,
+      role: admin.role,
+      createdAt: admin.createdAt,
     };
   }
 }
