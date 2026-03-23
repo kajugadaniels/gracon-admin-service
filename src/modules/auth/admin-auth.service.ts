@@ -65,6 +65,7 @@ export class AdminAuthService {
   ) {
     this.ACCESS_TOKEN_EXPIRY = config.get('ADMIN_JWT_ACCESS_EXPIRY', '8h');
     this.REFRESH_TOKEN_EXPIRY = config.get('ADMIN_JWT_REFRESH_EXPIRY', '24h');
+    this.REFRESH_TOKEN_EXPIRY_MS = this.parseExpiryToMs(this.REFRESH_TOKEN_EXPIRY);
   }
 
   // ─── Login ────────────────────────────────────────────────────────────────
@@ -269,7 +270,6 @@ export class AdminAuthService {
   async createAdmin(
     dto: CreateAdminDto,
     createdByAdminId: string,
-    createdByName: string,
     ipAddress: string,
   ): Promise<{ success: boolean; message: string; data: SafeAdminProfile }> {
     // Fetch the SUPER_ADMIN's real name — never trust req.user for display names
@@ -280,7 +280,7 @@ export class AdminAuthService {
 
     const createdByName = creator
       ? `${creator.firstName} ${creator.lastName}`
-      : creator?.email ?? 'SUPER_ADMIN'
+      : 'SUPER_ADMIN'
 
     // Check email uniqueness
     const existing = await this.prisma.admin.findUnique({
@@ -587,11 +587,6 @@ export class AdminAuthService {
     return { accessToken, refreshToken: rawRefreshToken };
   }
 
-  // In constructor, after reading config:
-  const refreshExpiry = this.config.get('ADMIN_JWT_REFRESH_EXPIRY', '24h');
-  this.REFRESH_TOKEN_EXPIRY_MS = this.parseExpiryToMs(refreshExpiry);
-
-  // Add this private helper at the bottom of the class:
   private parseExpiryToMs(expiry: string): number {
     const unit  = expiry.slice(-1);
     const value = parseInt(expiry.slice(0, -1), 10);
