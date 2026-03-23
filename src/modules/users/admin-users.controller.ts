@@ -23,16 +23,16 @@ import {
   ApiParam,
   ApiQuery,
 } from '@nestjs/swagger';
-import { Request }               from 'express';
-import { Throttle }              from '@nestjs/throttler';
-import { AdminUsersService }     from './admin-users.service';
-import { QueryUsersDto }         from './dto/query-users.dto';
-import { UpdateUserStatusDto }   from './dto/update-user-status.dto';
+import type { Request } from 'express';
+import { Throttle } from '@nestjs/throttler';
+import { AdminUsersService } from './admin-users.service';
+import { QueryUsersDto } from './dto/query-users.dto';
+import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdateIdVerificationDto } from './dto/update-id-verification.dto';
-import { RequireRole }           from '../../common/decorators/require-role.decorator';
-import { CurrentAdmin }          from '../../common/decorators/current-admin.decorator';
-import { AdminRole }             from '@prisma/client';
-import type { AdminJwtPayload }  from '../../common/decorators/current-admin.decorator';
+import { RequireRole } from '../../common/decorators/require-role.decorator';
+import { CurrentAdmin } from '../../common/decorators/current-admin.decorator';
+import { AdminRole } from '@prisma/client';
+import type { AdminJwtPayload } from '../../common/decorators/current-admin.decorator';
 
 @ApiTags('users')
 @ApiBearerAuth('admin-jwt')
@@ -80,35 +80,35 @@ still pending verification. She gets a list of 3 matching users.
       example: {
         data: [
           {
-            userId:       'c3d4e5f6-a7b8-9012-cdef-123456789012',
-            firstName:    'Diane',
-            lastName:     'Uwimana',
-            email:        'uwimana.diane@gmail.com',
-            phoneNumber:  '+250788901234',
-            isActive:     true,
-            isVerified:   true,
+            userId: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
+            firstName: 'Diane',
+            lastName: 'Uwimana',
+            email: 'uwimana.diane@gmail.com',
+            phoneNumber: '+250788901234',
+            isActive: true,
+            isVerified: true,
             isIdVerified: false,
-            createdAt:    '2024-10-01T09:15:00.000Z',
+            createdAt: '2024-10-01T09:15:00.000Z',
           },
           {
-            userId:       'd4e5f6a7-b8c9-0123-defa-234567890123',
-            firstName:    'Eric',
-            lastName:     'Habimana',
-            email:        'habimana.eric@gmail.com',
-            phoneNumber:  '+250789012345',
-            isActive:     true,
-            isVerified:   true,
+            userId: 'd4e5f6a7-b8c9-0123-defa-234567890123',
+            firstName: 'Eric',
+            lastName: 'Habimana',
+            email: 'habimana.eric@gmail.com',
+            phoneNumber: '+250789012345',
+            isActive: true,
+            isVerified: true,
             isIdVerified: true,
-            createdAt:    '2024-09-15T14:30:00.000Z',
+            createdAt: '2024-09-15T14:30:00.000Z',
           },
         ],
         pagination: {
-          page:       1,
-          limit:      20,
-          total:      2847,
+          page: 1,
+          limit: 20,
+          total: 2847,
           totalPages: 143,
-          hasNext:    true,
-          hasPrev:    false,
+          hasNext: true,
+          hasPrev: false,
         },
       },
     },
@@ -153,51 +153,51 @@ verification attempts, the IPs they came from, and his 2 active sessions.
     `,
   })
   @ApiParam({
-    name:        'id',
+    name: 'id',
     description: 'UUID of the user.',
-    example:     'c3d4e5f6-a7b8-9012-cdef-123456789012',
+    example: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
   })
   @ApiResponse({
     status: 200,
     description: 'Full user detail returned.',
     schema: {
       example: {
-        userId:       'c3d4e5f6-a7b8-9012-cdef-123456789012',
-        firstName:    'Jean-Pierre',
-        lastName:     'Kalisa',
-        email:        'kalisa.jp@gmail.com',
-        phoneNumber:  '+250788345678',
-        imageUrl:     'https://bucket.s3.amazonaws.com/profiles/c3d4e5f6.jpg',
-        nid:          '••••••••••••6790',
-        pid:          '••••••••••1',
+        userId: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
+        firstName: 'Jean-Pierre',
+        lastName: 'Kalisa',
+        email: 'kalisa.jp@gmail.com',
+        phoneNumber: '+250788345678',
+        imageUrl: 'https://bucket.s3.amazonaws.com/profiles/c3d4e5f6.jpg',
+        nid: '••••••••••••6790',
+        pid: '••••••••••1',
         nidDecrypted: false,
-        dateOfBirth:  '1992-04-15T00:00:00.000Z',
-        sex:          'M',
+        dateOfBirth: '1992-04-15T00:00:00.000Z',
+        sex: 'M',
         countryOfBirth: 'Rwanda',
-        isActive:     true,
-        isVerified:   true,
+        isActive: true,
+        isVerified: true,
         isIdVerified: false,
         idVerifiedAt: null,
         verificationAttempts: 3,
-        createdAt:    '2024-10-01T09:15:00.000Z',
-        updatedAt:    '2024-11-18T11:42:00.000Z',
+        createdAt: '2024-10-01T09:15:00.000Z',
+        updatedAt: '2024-11-18T11:42:00.000Z',
         verifications: [
           {
-            id:             'v1-uuid',
-            attemptNumber:  3,
-            documentMatch:  true,
-            faceScore:      62.4,
-            livenessScore:  55.1,
+            id: 'v1-uuid',
+            attemptNumber: 3,
+            documentMatch: true,
+            faceScore: 62.4,
+            livenessScore: 55.1,
             compositeScore: 62.8,
-            passed:         false,
-            failReason:     'Composite score below threshold (62.8 < 80.0)',
-            ipAddress:      '197.243.11.45',
-            createdAt:      '2024-11-18T11:42:00.000Z',
+            passed: false,
+            failReason: 'Composite score below threshold (62.8 < 80.0)',
+            ipAddress: '197.243.11.45',
+            createdAt: '2024-11-18T11:42:00.000Z',
           },
         ],
         sessions: [
           {
-            id:        's1-uuid',
+            id: 's1-uuid',
             tokenType: 'limited',
             ipAddress: '197.243.11.45',
             userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)',
@@ -207,20 +207,24 @@ verification attempts, the IPs they came from, and his 2 active sessions.
         ],
         securityEvents: [
           {
-            id:        'se1-uuid',
+            id: 'se1-uuid',
             eventType: 'VERIFICATION_FAILED',
             ipAddress: '197.243.11.45',
-            metadata:  { compositeScore: 62.8, failReason: 'below_threshold', attemptNumber: 3 },
+            metadata: {
+              compositeScore: 62.8,
+              failReason: 'below_threshold',
+              attemptNumber: 3,
+            },
             createdAt: '2024-11-18T11:42:00.000Z',
           },
         ],
         auditHistory: [
           {
-            id:        'al1-uuid',
-            action:    'USER_DETAIL_VIEWED',
-            adminId:   'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+            id: 'al1-uuid',
+            action: 'USER_DETAIL_VIEWED',
+            adminId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
             adminName: 'Ishimwe Patrick',
-            metadata:  { adminRole: 'ADMIN' },
+            metadata: { adminRole: 'ADMIN' },
             ipAddress: '41.186.255.12',
             createdAt: '2024-11-19T08:00:00.000Z',
           },
@@ -234,15 +238,16 @@ verification attempts, the IPs they came from, and his 2 active sessions.
     schema: {
       example: {
         statusCode: 404,
-        error:   'Not Found',
-        message: 'User with ID "c3d4e5f6-a7b8-9012-cdef-123456789012" not found.',
+        error: 'Not Found',
+        message:
+          'User with ID "c3d4e5f6-a7b8-9012-cdef-123456789012" not found.',
       },
     },
   })
   async getUserDetail(
     @Param('id', ParseUUIDPipe) userId: string,
-    @CurrentAdmin()             admin:  AdminJwtPayload,
-    @Req()                      req:    Request,
+    @CurrentAdmin() admin: AdminJwtPayload,
+    @Req() req: Request,
   ) {
     return this.usersService.getUserDetail(
       userId,
@@ -284,9 +289,9 @@ immediately terminated.
     `,
   })
   @ApiParam({
-    name:        'id',
+    name: 'id',
     description: 'UUID of the user to update.',
-    example:     'c3d4e5f6-a7b8-9012-cdef-123456789012',
+    example: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
   })
   @ApiResponse({
     status: 200,
@@ -297,7 +302,8 @@ immediately terminated.
           summary: 'Account deactivated',
           value: {
             success: true,
-            message: 'User account has been deactivated and all sessions revoked.',
+            message:
+              'User account has been deactivated and all sessions revoked.',
           },
         },
         activated: {
@@ -317,9 +323,9 @@ immediately terminated.
   @ApiResponse({ status: 404, description: 'User not found.' })
   async updateUserStatus(
     @Param('id', ParseUUIDPipe) userId: string,
-    @Body()                     dto:    UpdateUserStatusDto,
-    @CurrentAdmin()             admin:  AdminJwtPayload,
-    @Req()                      req:    Request,
+    @Body() dto: UpdateUserStatusDto,
+    @CurrentAdmin() admin: AdminJwtPayload,
+    @Req() req: Request,
   ) {
     return this.usersService.updateUserStatus(
       userId,
@@ -358,17 +364,17 @@ immediately revoked. Jean-Pierre can log in fresh from his phone.
     `,
   })
   @ApiParam({
-    name:        'id',
+    name: 'id',
     description: 'UUID of the user whose sessions should be revoked.',
-    example:     'd4e5f6a7-b8c9-0123-defa-234567890123',
+    example: 'd4e5f6a7-b8c9-0123-defa-234567890123',
   })
   @ApiResponse({
     status: 200,
     description: 'All active sessions revoked.',
     schema: {
       example: {
-        success:      true,
-        message:      '3 active session(s) revoked. User must log in again.',
+        success: true,
+        message: '3 active session(s) revoked. User must log in again.',
         revokedCount: 3,
       },
     },
@@ -376,8 +382,8 @@ immediately revoked. Jean-Pierre can log in fresh from his phone.
   @ApiResponse({ status: 404, description: 'User not found.' })
   async revokeUserSessions(
     @Param('id', ParseUUIDPipe) userId: string,
-    @CurrentAdmin()             admin:  AdminJwtPayload,
-    @Req()                      req:    Request,
+    @CurrentAdmin() admin: AdminJwtPayload,
+    @Req() req: Request,
   ) {
     return this.usersService.revokeUserSessions(
       userId,
@@ -424,9 +430,9 @@ with reason "In-person document verification at Kigali HQ, 2024-11-20".
     `,
   })
   @ApiParam({
-    name:        'id',
+    name: 'id',
     description: 'UUID of the user.',
-    example:     'c3d4e5f6-a7b8-9012-cdef-123456789012',
+    example: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
   })
   @ApiResponse({
     status: 200,
@@ -458,9 +464,9 @@ with reason "In-person document verification at Kigali HQ, 2024-11-20".
   @ApiResponse({ status: 404, description: 'User not found.' })
   async updateIdVerification(
     @Param('id', ParseUUIDPipe) userId: string,
-    @Body()                     dto:    UpdateIdVerificationDto,
-    @CurrentAdmin()             admin:  AdminJwtPayload,
-    @Req()                      req:    Request,
+    @Body() dto: UpdateIdVerificationDto,
+    @CurrentAdmin() admin: AdminJwtPayload,
+    @Req() req: Request,
   ) {
     return this.usersService.updateIdVerification(
       userId,
@@ -473,6 +479,7 @@ with reason "In-person document verification at Kigali HQ, 2024-11-20".
   // ── GET /users/:id/decrypt-nid ─────────────────────────────────────────────
 
   @Get(':id/decrypt-nid')
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
   @RequireRole(AdminRole.SUPER_ADMIN)
   @Throttle({ strict: { limit: 10, ttl: 3_600_000 } })
   @HttpCode(HttpStatus.OK)
@@ -505,16 +512,16 @@ SUPER_ADMIN a1b2c3d4 from IP 41.186.255.12 at 2024-11-20T14:30:00Z".
     `,
   })
   @ApiParam({
-    name:        'id',
+    name: 'id',
     description: 'UUID of the user whose NID should be decrypted.',
-    example:     'c3d4e5f6-a7b8-9012-cdef-123456789012',
+    example: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
   })
   @ApiResponse({
     status: 200,
     description: 'Decrypted NID returned. Access logged to AdminAuditLog.',
     schema: {
       example: {
-        nid:    '1 1993 8 0042537 0 04',
+        nid: '1 1993 8 0042537 0 04',
         userId: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
       },
     },
@@ -525,7 +532,7 @@ SUPER_ADMIN a1b2c3d4 from IP 41.186.255.12 at 2024-11-20T14:30:00Z".
     schema: {
       example: {
         statusCode: 403,
-        error:   'Forbidden',
+        error: 'Forbidden',
         message: 'This action requires SUPER_ADMIN privileges.',
       },
     },
@@ -540,8 +547,8 @@ SUPER_ADMIN a1b2c3d4 from IP 41.186.255.12 at 2024-11-20T14:30:00Z".
   })
   async decryptNid(
     @Param('id', ParseUUIDPipe) userId: string,
-    @CurrentAdmin()             admin:  AdminJwtPayload,
-    @Req()                      req:    Request,
+    @CurrentAdmin() admin: AdminJwtPayload,
+    @Req() req: Request,
   ) {
     return this.usersService.decryptNid(
       userId,
