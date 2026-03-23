@@ -5,6 +5,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AdminSecurityEventsService } from './admin-security-events.service';
 import { QuerySecurityEventsDto } from './dto/query-security-events.dto';
 
@@ -18,6 +19,9 @@ export class AdminSecurityEventsController {
 
   @Get()
   @HttpCode(HttpStatus.OK)
+  // Explicit throttle — same reasoning as the audit endpoint: cheap paginated
+  // reads with no natural gate. 30 req/min matches the general tier.
+  @Throttle({ general: { limit: 30, ttl: 60_000 } })
   @ApiOperation({
     summary: 'List security events',
     description: `
