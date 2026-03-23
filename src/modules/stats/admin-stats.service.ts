@@ -4,7 +4,7 @@
 // Cache is invalidated on expiry only — no manual invalidation needed for dashboard stats.
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { SecurityEvent } from '@prisma/client';
+import { Prisma, SecurityEvent } from '@prisma/client';
 
 export interface PlatformStats {
   // Snapshot numbers
@@ -152,26 +152,39 @@ export class AdminStatsService {
       `,
     ]);
 
-    // Daily chart data — two more parallel queries
+    // Daily chart data — two more parallel queries.
+    // Prisma.sql is used explicitly rather than the $queryRaw tagged-template
+    // shorthand to guarantee that Date values are passed as query parameters,
+    // not interpolated as strings. The tagged-template form delegates Date
+    // serialisation to Prisma internals whose behaviour has varied across
+    // minor versions — Prisma.sql makes parameterisation unconditional.
     const [registrationRows, verificationRows] = await Promise.all([
-      this.prisma.$queryRaw<{ date: string; count: bigint }[]>`
-        SELECT
-          DATE("createdAt") AS date,
-          COUNT(*) AS count
-        FROM users
-        WHERE "createdAt" >= ${last7Days}
-        GROUP BY DATE("createdAt")
-        ORDER BY date ASC
-      `,
-      this.prisma.$queryRaw<{ date: string; count: bigint }[]>`
-        SELECT
-          DATE("createdAt") AS date,
-          COUNT(*) AS count
-        FROM id_verifications
-        WHERE "createdAt" >= ${last7Days}
-        GROUP BY DATE("createdAt")
-        ORDER BY date ASC
-      `,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      this.prisma.$queryRaw<{ date: string; count: bigint }[]>(
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        Prisma.sql`
+          SELECT
+            DATE("createdAt") AS date,
+            COUNT(*) AS count
+          FROM users
+          WHERE "createdAt" >= ${last7Days}
+          GROUP BY DATE("createdAt")
+          ORDER BY date ASC
+        `,
+      ),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      this.prisma.$queryRaw<{ date: string; count: bigint }[]>(
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        Prisma.sql`
+          SELECT
+            DATE("createdAt") AS date,
+            COUNT(*) AS count
+          FROM id_verifications
+          WHERE "createdAt" >= ${last7Days}
+          GROUP BY DATE("createdAt")
+          ORDER BY date ASC
+        `,
+      ),
     ]);
 
     // Generate all 7 date labels — fill missing days with 0
