@@ -6,13 +6,17 @@ import { PrismaModule } from './common/prisma/prisma.module';
 import { EncryptionModule } from './common/crypto/encryption.module';
 import { AuditModule } from './common/audit/audit.module';
 import { AppMailerModule } from './common/mailer/mailer.module';
+import { TasksModule } from './common/tasks/tasks.module';
 import { DocsAuthMiddleware } from './common/security/docs-auth.middleware';
 import { AdminAuthModule } from './modules/auth/admin-auth.module';
+import { AdminUsersModule } from './modules/users/admin-users.module';
+import { AdminVerificationsModule } from './modules/verifications/admin-verifications.module';
+import { AdminAuditModule } from './modules/audit/admin-audit.module';
+import { AdminSecurityEventsModule } from './modules/security-events/admin-security-events.module';
+import { AdminStatsModule } from './modules/stats/admin-stats.module';
 import { AdminAuthGuard } from './common/guards/admin-auth.guard';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { validateEnv } from './common/config/env.validation';
-import { TasksModule } from './common/tasks/tasks.module';
-import { AdminUsersModule } from './modules/users/admin-users.module';
 
 @Module({
   imports: [
@@ -28,19 +32,23 @@ import { AdminUsersModule } from './modules/users/admin-users.module';
       { name: 'strict', ttl: 600_000, limit: 10 },
     ]),
 
+    // Global common modules
     PrismaModule,
     EncryptionModule,
     AuditModule,
     AppMailerModule,
-    AdminAuthModule,
     TasksModule,
+
+    // Feature modules
+    AdminAuthModule,
     AdminUsersModule,
+    AdminVerificationsModule,
+    AdminAuditModule,
+    AdminSecurityEventsModule,
+    AdminStatsModule,
   ],
   providers: [
-    // ThrottlerGuard applied first — rate limit before auth check
     { provide: APP_GUARD, useClass: ThrottlerGuard },
-    // AdminAuthGuard applied globally — every route protected by default
-    // Use @SkipAuth() on public endpoints (login, invite flow)
     { provide: APP_GUARD, useClass: AdminAuthGuard },
     DocsAuthMiddleware,
   ],
