@@ -5,6 +5,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AdminAuditService } from './admin-audit.service';
 import { QueryAuditDto } from './dto/query-audit.dto';
 
@@ -16,6 +17,10 @@ export class AdminAuditController {
 
   @Get()
   @HttpCode(HttpStatus.OK)
+  // Explicit throttle — pagination endpoints are cheap to call repeatedly
+  // and have no natural gate (no auth cost, no compute). Without this a
+  // logged-in admin could enumerate years of logs in seconds.
+  @Throttle({ general: { limit: 30, ttl: 60_000 } })
   @ApiOperation({
     summary: 'List admin audit log',
     description: `
