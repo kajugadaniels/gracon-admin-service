@@ -45,6 +45,7 @@ import { CurrentAdmin } from '../../common/decorators/current-admin.decorator';
 import { AdminRole } from '@prisma/client';
 import type { AdminJwtPayload } from '../../common/decorators/current-admin.decorator';
 import { Throttle } from '@nestjs/throttler';
+import { SkipAuth } from 'src/common/decorators';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -54,6 +55,7 @@ export class AdminAuthController {
   // ── POST /auth/login ──────────────────────────────────────────────────────
 
   @Post('login')
+  @SkipAuth()
   @HttpCode(HttpStatus.OK)
   @Throttle({ auth: { limit: 5, ttl: 60_000 } })
   @ApiOperation({
@@ -204,7 +206,7 @@ interruption.
   // ── POST /auth/logout ─────────────────────────────────────────────────────
 
   @Post('logout')
-  @UseGuards(AdminAuthGuard)
+  // @UseGuards(AdminAuthGuard)
   @ApiBearerAuth('admin-jwt')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -244,7 +246,8 @@ refresh token is gone, so no new tokens can be issued.
   // ── POST /auth/admins ─────────────────────────────────────────────────────
 
   @Post('admins')
-  @UseGuards(AdminAuthGuard)
+  // @UseGuards(AdminAuthGuard)
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
   @RequireRole(AdminRole.SUPER_ADMIN)
   @ApiBearerAuth('admin-jwt')
   @HttpCode(HttpStatus.CREATED)
@@ -323,15 +326,10 @@ the link, sets his password, and can now log in to the admin panel.
     @CurrentAdmin() admin: AdminJwtPayload,
     @Req() req: Request,
   ) {
-    const createdByName =
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      `${(req.user as any)?.firstName ?? ''} ${(req.user as any)?.lastName ?? ''}`.trim() ||
-      admin.email;
-
+    // No more (req.user as any) — service resolves the name from DB
     return this.authService.createAdmin(
       dto,
       admin.adminId,
-      createdByName,
       this.extractIp(req),
     );
   }
@@ -339,6 +337,7 @@ the link, sets his password, and can now log in to the admin panel.
   // ── GET /auth/invite/validate ─────────────────────────────────────────────
 
   @Get('invite/validate')
+  @SkipAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Validate an admin invite token',
@@ -414,6 +413,7 @@ and shows him a message to contact the SUPER_ADMIN for a new invite.
   // ── POST /auth/invite/set-password ────────────────────────────────────────
 
   @Post('invite/set-password')
+  @SkipAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Set password and activate admin account',
@@ -475,7 +475,8 @@ token is burned. He is redirected to /login with a success message.
   // ── POST /auth/admins/:id/resend-invite ───────────────────────────────────
 
   @Post('admins/:id/resend-invite')
-  @UseGuards(AdminAuthGuard)
+  // @UseGuards(AdminAuthGuard)
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
   @RequireRole(AdminRole.SUPER_ADMIN)
   @ApiBearerAuth('admin-jwt')
   @HttpCode(HttpStatus.OK)
