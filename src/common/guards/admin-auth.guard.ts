@@ -1,7 +1,3 @@
-// AdminAuthGuard — validates JWT signature and token type.
-// Rejects user tokens even if they somehow have the right signature
-// by checking type: "admin" in the payload.
-// Also enforces role requirements set by @RequireRole() decorator.
 import {
   Injectable,
   ExecutionContext,
@@ -12,6 +8,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
 import { AdminRole } from '@prisma/client';
 import { REQUIRE_ROLE_KEY } from '../decorators/require-role.decorator';
+import { IS_PUBLIC_KEY } from '../decorators/skip-auth.decorator';
 
 @Injectable()
 export class AdminAuthGuard extends AuthGuard('admin-jwt') {
@@ -20,6 +17,15 @@ export class AdminAuthGuard extends AuthGuard('admin-jwt') {
   }
 
   canActivate(context: ExecutionContext) {
+    // Check if the route is marked @SkipAuth() — if yes, skip JWT validation
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (isPublic) return true;
+
+    // Proceed to JWT validation via passport-jwt
     return super.canActivate(context);
   }
 
@@ -29,31 +35,28 @@ export class AdminAuthGuard extends AuthGuard('admin-jwt') {
     _info: unknown,
     context: ExecutionContext,
   ) {
-    // JWT validation failed — missing, expired, or wrong secret
     if (err || !user) {
       throw new UnauthorizedException(
         'Admin authentication required. Please log in to the admin panel.',
       );
     }
 
-    // Extra defence — reject any token where type !== "admin"
-    // Prevents user tokens from ever reaching admin endpoints
+    // Defence in depth — reject user tokens even with same secret
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     if (user.type !== 'admin') {
       throw new UnauthorizedException('Invalid token type for admin access.');
     }
 
-    // Check role requirement from @RequireRole() decorator
+    // Role enforcement from @RequireRole() decorator
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const requiredRole = this.reflector.getAllAndOverride<AdminRole>(
       REQUIRE_ROLE_KEY,
       [context.getHandler(), context.getClass()],
     );
 
-    // No role decorator — any authenticated admin can proceed
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     if (!requiredRole) return user;
 
-    // Role decorator present — enforce it
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     if (user.role !== requiredRole) {
       throw new ForbiddenException(
