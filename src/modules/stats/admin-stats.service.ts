@@ -182,30 +182,43 @@ export class AdminStatsService {
     // not interpolated as strings. The tagged-template form delegates Date
     // serialisation to Prisma internals whose behaviour has varied across
     // minor versions — Prisma.sql makes parameterisation unconditional.
+    //
+    // DATE_TRUNC('day', ...) is used instead of DATE() for two reasons:
+    // 1. DATE() uses the server's local timezone — rows near midnight are
+    //    silently bucketed to the wrong day if the server is not UTC.
+    //    DATE_TRUNC truncates in UTC, matching how Prisma stores timestamps.
+    // 2. DATE_TRUNC returns a timestamp (not date), so the GROUP BY operates
+    //    on the truncated timestamp expression. The WHERE "createdAt" >= ?
+    //    predicate still drives an index range scan — the function appears
+    //    only in SELECT/GROUP BY, not in the filter predicate.
+    //
+    // DATE_TRUNC returns a timestamp — node-postgres delivers it as a Date
+    // object. The Map key is converted to YYYY-MM-DD via toISOString() to
+    // match the labels produced by generateDateLabels().
     const [registrationRows, verificationRows] = await Promise.all([
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      this.prisma.$queryRaw<{ date: string; count: bigint }[]>(
+      this.prisma.$queryRaw<{ date: Date; count: bigint }[]>(
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         Prisma.sql`
           SELECT
-            DATE("createdAt") AS date,
+            DATE_TRUNC('day', "createdAt") AS date,
             COUNT(*) AS count
           FROM users
           WHERE "createdAt" >= ${last7Days}
-          GROUP BY DATE("createdAt")
+          GROUP BY DATE_TRUNC('day', "createdAt")
           ORDER BY date ASC
         `,
       ),
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      this.prisma.$queryRaw<{ date: string; count: bigint }[]>(
+      this.prisma.$queryRaw<{ date: Date; count: bigint }[]>(
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         Prisma.sql`
           SELECT
-            DATE("createdAt") AS date,
+            DATE_TRUNC('day', "createdAt") AS date,
             COUNT(*) AS count
           FROM id_verifications
           WHERE "createdAt" >= ${last7Days}
-          GROUP BY DATE("createdAt")
+          GROUP BY DATE_TRUNC('day', "createdAt")
           ORDER BY date ASC
         `,
       ),
@@ -216,10 +229,10 @@ export class AdminStatsService {
     const dateLabels = this.generateDateLabels(last7Days, now);
 
     const registrationMap = new Map(
-      registrationRows.map((r) => [r.date, Number(r.count)]),
+      registrationRows.map((r) => [r.date.toISOString().split('T')[0], Number(r.count)]),
     );
     const verificationMap = new Map(
-      verificationRows.map((r) => [r.date, Number(r.count)]),
+      verificationRows.map((r) => [r.date.toISOString().split('T')[0], Number(r.count)]),
     );
 
     const registrationsLast7Days: DailyCount[] = dateLabels.map((date) => ({
