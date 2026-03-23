@@ -20,7 +20,6 @@ import {
   Query,
   HttpCode,
   HttpStatus,
-  UseGuards,
   Req,
 } from '@nestjs/common';
 import {
@@ -39,7 +38,6 @@ import { CreateAdminDto } from './dto/create-admin.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ValidateInviteDto } from './dto/validate-invite.dto';
-import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import { RequireRole } from '../../common/decorators/require-role.decorator';
 import { CurrentAdmin } from '../../common/decorators/current-admin.decorator';
 import { AdminRole } from '@prisma/client';
@@ -541,15 +539,9 @@ new invite email with a fresh 48-hour link.
     @CurrentAdmin() admin: AdminJwtPayload,
     @Req() req: Request,
   ) {
-    const requestingName =
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      `${(req.user as any)?.firstName ?? ''} ${(req.user as any)?.lastName ?? ''}`.trim() ||
-      admin.email;
-
     return this.authService.resendInvite(
       targetAdminId,
       admin.adminId,
-      requestingName,
       this.extractIp(req),
     );
   }
