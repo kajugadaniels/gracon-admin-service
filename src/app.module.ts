@@ -10,10 +10,15 @@ import { DocsAuthMiddleware } from './common/security/docs-auth.middleware';
 import { AdminAuthModule } from './modules/auth/admin-auth.module';
 import { AdminAuthGuard } from './common/guards/admin-auth.guard';
 import { ThrottlerGuard } from '@nestjs/throttler';
+import { validateEnv } from './common/config/env.validation';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: '.env',
+      validate: validateEnv,
+    }),
 
     ThrottlerModule.forRoot([
       { name: 'general', ttl: 60_000, limit: 30 },
