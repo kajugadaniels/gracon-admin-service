@@ -65,7 +65,9 @@ export class AdminAuthService {
   ) {
     this.ACCESS_TOKEN_EXPIRY = config.get('ADMIN_JWT_ACCESS_EXPIRY', '8h');
     this.REFRESH_TOKEN_EXPIRY = config.get('ADMIN_JWT_REFRESH_EXPIRY', '24h');
-    this.REFRESH_TOKEN_EXPIRY_MS = this.parseExpiryToMs(this.REFRESH_TOKEN_EXPIRY);
+    this.REFRESH_TOKEN_EXPIRY_MS = this.parseExpiryToMs(
+      this.REFRESH_TOKEN_EXPIRY,
+    );
   }
 
   // ─── Login ────────────────────────────────────────────────────────────────
@@ -254,6 +256,40 @@ export class AdminAuthService {
     return { success: true, message: 'Logged out successfully.' };
   }
 
+  /**
+   * Returns all admin accounts ordered by creation date descending.
+   * Called by the admin management page.
+   * Never returns passwordHash.
+   */
+  async listAdmins(): Promise<{ data: SafeAdminProfile[] }> {
+    const admins = await this.prisma.admin.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phoneNumber: true,
+        role: true,
+        isVerified: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+
+    return {
+      data: admins.map((a) => ({
+        adminId: a.id,
+        firstName: a.firstName,
+        lastName: a.lastName,
+        email: a.email,
+        phoneNumber: a.phoneNumber ?? null,
+        role: a.role,
+        createdAt: a.createdAt,
+      })),
+    };
+  }
+
   // ─── Create admin ─────────────────────────────────────────────────────────
 
   /**
@@ -274,13 +310,13 @@ export class AdminAuthService {
   ): Promise<{ success: boolean; message: string; data: SafeAdminProfile }> {
     // Fetch the SUPER_ADMIN's real name — never trust req.user for display names
     const creator = await this.prisma.admin.findUnique({
-      where:  { id: createdByAdminId },
+      where: { id: createdByAdminId },
       select: { firstName: true, lastName: true, email: true },
     });
 
     const createdByName = creator
       ? `${creator.firstName} ${creator.lastName}`
-      : 'SUPER_ADMIN'
+      : 'SUPER_ADMIN';
 
     // Check email uniqueness
     const existing = await this.prisma.admin.findUnique({
@@ -479,16 +515,18 @@ export class AdminAuthService {
    * Only callable by SUPER_ADMIN.
    */
   async resendInvite(
-    targetAdminId:      string,
-    requestingAdminId:  string,
-    ipAddress:          string,
+    targetAdminId: string,
+    requestingAdminId: string,
+    ipAddress: string,
   ): Promise<{ success: boolean; message: string }> {
-
     const admin = await this.prisma.admin.findUnique({
-      where:  { id: targetAdminId },
+      where: { id: targetAdminId },
       select: {
-        id: true, firstName: true, lastName: true,
-        email: true, isVerified: true,
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        isVerified: true,
       },
     });
 
@@ -499,7 +537,7 @@ export class AdminAuthService {
       );
     }
 
-    const rawToken  = crypto.randomBytes(32).toString('hex');
+    const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = this.encryption.hash(rawToken);
     const expiresAt = new Date(Date.now() + this.INVITE_TOKEN_EXPIRY_MS);
 
@@ -507,7 +545,7 @@ export class AdminAuthService {
     await this.prisma.$transaction(async (tx) => {
       await tx.adminInviteToken.updateMany({
         where: { adminId: targetAdminId, used: false },
-        data:  { used: true },
+        data: { used: true },
       });
       await tx.adminInviteToken.create({
         data: { adminId: targetAdminId, tokenHash, expiresAt, used: false },
@@ -516,7 +554,7 @@ export class AdminAuthService {
 
     // Fetch requesting admin name for the email
     const requester = await this.prisma.admin.findUnique({
-      where:  { id: requestingAdminId },
+      where: { id: requestingAdminId },
       select: { firstName: true, lastName: true },
     });
     const requestingName = requester
@@ -524,14 +562,18 @@ export class AdminAuthService {
       : 'SUPER_ADMIN';
 
     await this.mailer.sendAdminInviteEmail({
-      to: admin.email, firstName: admin.firstName, lastName: admin.lastName,
-      email: admin.email, createdByName: requestingName,
-      adminId: admin.id, token: rawToken,
+      to: admin.email,
+      firstName: admin.firstName,
+      lastName: admin.lastName,
+      email: admin.email,
+      createdByName: requestingName,
+      adminId: admin.id,
+      token: rawToken,
     });
 
     void this.audit.log({
-      adminId:  requestingAdminId,
-      action:   AdminAction.ADMIN_INVITE_RESENT,
+      adminId: requestingAdminId,
+      action: AdminAction.ADMIN_INVITE_RESENT,
       metadata: { targetAdminId, targetEmail: admin.email },
       ipAddress,
     });
@@ -588,7 +630,7 @@ export class AdminAuthService {
   }
 
   private parseExpiryToMs(expiry: string): number {
-    const unit  = expiry.slice(-1);
+    const unit = expiry.slice(-1);
     const value = parseInt(expiry.slice(0, -1), 10);
     const map: Record<string, number> = {
       s: 1_000,
@@ -597,7 +639,9 @@ export class AdminAuthService {
       d: 86_400_000,
     };
     if (!map[unit] || isNaN(value)) {
-      throw new Error(`Invalid expiry format: "${expiry}". Use e.g. "24h", "7d".`);
+      throw new Error(
+        `Invalid expiry format: "${expiry}". Use e.g. "24h", "7d".`,
+      );
     }
     return value * map[unit];
   }
