@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { normalizeDatabaseUrl } from './database-url.util';
 
 @Injectable()
 export class PrismaService
@@ -25,7 +26,9 @@ export class PrismaService
     if (!connectionString) {
       throw new Error('DATABASE_URL environment variable is not set');
     }
-    const adapter = new PrismaPg({ connectionString });
+    const adapter = new PrismaPg({
+      connectionString: normalizeDatabaseUrl(connectionString),
+    });
     super({ adapter });
   }
 
