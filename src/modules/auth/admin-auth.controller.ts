@@ -470,6 +470,63 @@ token is burned. He is redirected to /login with a success message.
     return this.authService.setPassword(dto, this.extractIp(req));
   }
 
+  // Add this endpoint to AdminAuthController
+
+  @Get('admins')
+  @RequireRole(AdminRole.SUPER_ADMIN)
+  @ApiBearerAuth('admin-jwt')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'List all admin accounts',
+    description: `
+  **SUPER_ADMIN only.** Returns all admin accounts on the platform.
+
+  Used by the admin management page to show the full admin roster.
+  Includes verification status so the SUPER_ADMIN knows which accounts
+  are pending invite acceptance.
+
+  **Example scenario:**
+  Uwimana Diane opens the Admins page. She sees 4 admins: herself (SUPER_ADMIN),
+  Ishimwe Patrick (ADMIN, active), Niyonkuru Jean (ADMIN, invite pending),
+  and Habimana Eric (ADMIN, active).
+    `,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'All admin accounts returned.',
+    schema: {
+      example: {
+        data: [
+          {
+            adminId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+            firstName: 'Uwimana',
+            lastName: 'Diane',
+            email: 'uwimana.diane@idverify.rw',
+            phoneNumber: '+250788901234',
+            role: 'SUPER_ADMIN',
+            isVerified: true,
+            isActive: true,
+            createdAt: '2024-10-01T08:00:00.000Z',
+          },
+          {
+            adminId: 'b2c3d4e5-f6a7-8901-bcde-f12345678901',
+            firstName: 'Jean',
+            lastName: 'Niyonkuru',
+            email: 'niyonkuru.jean@idverify.rw',
+            phoneNumber: '+250789456123',
+            role: 'ADMIN',
+            isVerified: false,
+            isActive: true,
+            createdAt: '2024-11-20T10:15:00.000Z',
+          },
+        ],
+      },
+    },
+  })
+  async listAdmins() {
+    return this.authService.listAdmins();
+  }
+
   // ── POST /auth/admins/:id/resend-invite ───────────────────────────────────
 
   @Post('admins/:id/resend-invite')
@@ -481,25 +538,25 @@ token is burned. He is redirected to /login with a success message.
   @ApiOperation({
     summary: 'Resend invite to an unverified admin',
     description: `
-**SUPER_ADMIN only.** Resends the invite email to an admin who has not
-yet accepted their invitation.
+  **SUPER_ADMIN only.** Resends the invite email to an admin who has not
+  yet accepted their invitation.
 
-**What happens:**
-1. Any existing unused invite tokens for this admin are invalidated
-2. A new 48-hour invite token is generated and stored
-3. A fresh invite email is sent to the admin's registered email
-4. The action is logged in \`AdminAuditLog\`
+  **What happens:**
+  1. Any existing unused invite tokens for this admin are invalidated
+  2. A new 48-hour invite token is generated and stored
+  3. A fresh invite email is sent to the admin's registered email
+  4. The action is logged in \`AdminAuditLog\`
 
-**When to use:** The admin's original invite expired, they cannot find
-the email, or they request a fresh link.
+  **When to use:** The admin's original invite expired, they cannot find
+  the email, or they request a fresh link.
 
-**Cannot resend to verified admins** — if an admin has already accepted
-their invite and set a password, this endpoint returns a 400 error.
+  **Cannot resend to verified admins** — if an admin has already accepted
+  their invite and set a password, this endpoint returns a 400 error.
 
-**Example scenario:**
-Niyonkuru Jean's 48-hour invite expired before he could set his password.
-The SUPER_ADMIN calls this endpoint with Jean's adminId. Jean receives a
-new invite email with a fresh 48-hour link.
+  **Example scenario:**
+  Niyonkuru Jean's 48-hour invite expired before he could set his password.
+  The SUPER_ADMIN calls this endpoint with Jean's adminId. Jean receives a
+  new invite email with a fresh 48-hour link.
     `,
   })
   @ApiParam({
