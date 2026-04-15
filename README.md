@@ -1,112 +1,127 @@
-# Admin Service
+# API Admin
 
-> Part of the ID Verification Platform microservice architecture.
-> Handles all administrative operations — user management, audit trails,
-> security monitoring, and platform statistics.
+Admin control-plane backend for the Gracon platform.
 
----
+This service owns administrator authentication, admin invitations, audit-log access, security-event inspection, verification review, user oversight, and dashboard statistics. It shares the main Postgres database with `api/auth`, but it is a separate security boundary with its own JWT secret and its own guards.
 
-## What This Service Does
+## Overview
 
-This service is the internal admin backend. It is never accessible to
-regular users. It provides:
+- Runtime: NestJS + TypeScript
+- Default port: `3001`
+- Database: shared Neon/Postgres via Prisma
+- Auth model: `ADMIN_JWT_SECRET` only
+- Primary consumers: `app/admin`
 
-- **Admin authentication** — separate JWT system with its own secret,
-  shorter expiry (8h access / 24h refresh), and token type enforcement
-- **User management** — view all users, search, filter, deactivate,
-  reactivate, force revoke sessions, manually set ID verification status
-- **Sensitive data access** — SUPER_ADMIN can decrypt NIDs and PIDs with
-  full audit logging of every reveal
-- **Admin account management** — SUPER_ADMIN creates ADMIN accounts via
-  invite-link flow. New admins receive an email, click a link, set their
-  own password, and are activated.
-- **ID verification audit** — full history of every verification attempt
-  across all users with scores, fail reasons, and IP addresses
-- **Admin audit log** — immutable trail of every admin action
-- **Security event log** — real-time feed of security events written by
-  the auth service (failed logins, rate limit hits, token reuse, etc.)
-- **Platform statistics** — aggregated metrics for the dashboard
+## What This Service Owns
 
----
+- Admin login, refresh, logout, and invite-based set-password flow
+- Admin account lifecycle
+- Platform-wide admin audit trail
+- Verification review surfaces
+- Security event inspection
+- User listing and limited user-management actions
+- Dashboard metrics for the admin frontend
 
-## Architecture Position
+## Core Skills Needed
+
+- NestJS module/controller/service architecture
+- Prisma on shared schemas without cross-service drift
+- Admin-grade access control and auditability
+- Email invite flows with hashed one-time tokens
+- Secure token rotation and throttling
+
+## Techniques Used
+
+- Separate admin JWT trust boundary from user JWTs
+- `AdminAuthGuard` plus role enforcement through `@RequireRole(...)`
+- SHA-256 hashing for invite-token storage
+- bcrypt password hashing
+- AES decryption for protected user identifiers when admin views require it
+- Mailer-backed invite onboarding
+- Audit-on-write discipline for every state-changing endpoint
+
+## Main Modules
+
+```text
+src/
+  common/
+    audit/          shared audit logging service
+    crypto/         identifier decryption helpers
+    guards/         AdminAuthGuard and supporting auth utilities
+    mailer/         invite and notification email delivery
+    prisma/         Prisma service/module
+    security/       helmet, CORS, docs auth
+  modules/
+    auth/           admin auth and invite password setup
+    admins/         admin lifecycle management
+    audit/          audit-log read APIs
+    security-events/platform stats
+    users/          user oversight endpoints
+    verifications/  verification review surfaces
 ```
-app/admin (Next.js admin frontend)
-      │
-      ▼
-api/admin (this service — port 3001)
-      │
-      ▼
-Neon Postgres (shared with api/auth — read/write, no migrations)
+
+## Folder Structure
+
+```text
+api/admin/
+  prisma/
+  src/
+    common/
+    modules/
+  test/
+  package.json
+  nest-cli.json
+  tsconfig*.json
 ```
 
-This service shares the Neon Postgres database with `api/auth/` but
-**never runs `prisma migrate`**. Only `api/auth/` owns schema migrations.
-This service runs `prisma generate` only.
+## Local Commands
 
----
-
-## Key Security Properties
-
-- Uses a completely separate `ADMIN_JWT_SECRET` — user tokens are
-  cryptographically rejected on every admin endpoint
-- JWT payload includes `type: "admin"` — provides a secondary check
-  even if secrets were accidentally shared
-- NID and PID decryption requires `SUPER_ADMIN` role and is logged
-  to `AdminAuditLog` on every call
-- All admin actions are logged to an immutable audit trail
-- Swagger docs protected by basic auth in production
-- Rate limiting: 30 requests/min general, 5/min auth, 10/10min strict
-
----
-
-## Admin Roles
-
-| Role | Created by | Can do |
-|---|---|---|
-| `SUPER_ADMIN` | Prisma seed script only | Everything including creating ADMINs |
-| `ADMIN` | SUPER_ADMIN via admin panel | All actions except decrypt NID/PID and create admins |
-
----
-
-## Admin Account Invite Flow
-
-1. SUPER_ADMIN submits new admin form (name, email, phone)
-2. Service creates Admin record with `isVerified=false`, `passwordHash=null`
-3. 48-hour invite token generated and emailed to the new admin
-4. New admin clicks link → `/set-password` page
-5. Admin sets their password → account activated → redirected to login
-
----
-
-## Running Locally
 ```bash
-# 1. Copy schema from auth service (never edit independently)
-cp ../auth/prisma/schema.prisma prisma/schema.prisma
-
-# 2. Install dependencies
 npm install
-
-# 3. Generate Prisma client (never run prisma migrate here)
-npx prisma generate
-
-# 4. Start in development mode
 npm run start:dev
+npm run build
+npm run test
+npm run lint
 ```
 
-Service: `http://localhost:3001/api/v1`
-Docs:    `http://localhost:3001/docs`
+## Environment Notes
 
-> The SUPER_ADMIN must be seeded in `api/auth/` before this service
-> can authenticate any admin. Run `npx prisma db seed` in `api/auth/`.
+Key variables:
 
----
+```env
+APP_PORT=3001
+DATABASE_URL=
+ADMIN_JWT_SECRET=
+ENCRYPTION_SECRET=
+MAIL_HOST=
+MAIL_PORT=
+MAIL_USER=
+MAIL_PASS=
+MAIL_FROM=
+FRONTEND_URL=http://localhost:4001
+DOCS_BASIC_AUTH_USER=
+DOCS_BASIC_AUTH_PASS=
+```
 
-## Related Services
+## Integration Boundaries
 
-| Service | Location | Purpose |
-|---|---|---|
-| Auth Service | `api/auth/` | User auth, owns DB migrations |
-| AI Engine | `engine/` | Face comparison, liveness |
-| User App | `app/app/` | User-facing frontend |
-| Admin App | `app/admin/` | Admin dashboard frontend |
+- Receives requests only from `app/admin`
+- Reads the shared auth database, but does not become the auth issuer
+- Must never accept user JWTs from `api/auth`
+- Should never call unrelated platform services directly for business logic
+
+## Important Rules
+
+- Always protect private endpoints with `AdminAuthGuard`
+- Use `@RequireRole(AdminRole.SUPER_ADMIN)` for high-impact operations
+- Log every mutation through the audit service
+- Never run Prisma migrations here; `api/auth` owns the shared schema lifecycle
+- Never expose decrypted identifiers or internal admin secrets in responses
+
+## Contribution Checklist
+
+- Add DTO validation and Swagger metadata together
+- Keep mutations auditable
+- Check that user-token and admin-token trust boundaries are still isolated
+- Build before committing
+
