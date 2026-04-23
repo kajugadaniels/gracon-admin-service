@@ -29,6 +29,39 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { Prisma, SecurityEvent } from '@prisma/client';
 
+export interface DailyCount {
+  date: string; // ISO date string — "2024-11-19"
+  count: number;
+}
+
+export interface CountryCount {
+  country: string;
+  count: number;
+}
+
+export interface ForeignIdentityRecentRegistration {
+  fin: string;
+  firstName: string;
+  lastName: string;
+  countryOfOrigin: string;
+  isActive: boolean;
+  issuanceVersion: number;
+  createdAt: Date;
+}
+
+export interface ForeignIdentityStats {
+  totalRegistered: number;
+  active: number;
+  inactive: number;
+  registeredToday: number;
+  activeRate: number;
+  maleCount: number;
+  femaleCount: number;
+  registrationsLast7Days: DailyCount[];
+  topCountriesOfOrigin: CountryCount[];
+  recentRegistrations: ForeignIdentityRecentRegistration[];
+}
+
 export interface PlatformStats {
   // Snapshot numbers
   totalUsers: number;
@@ -51,20 +84,11 @@ export interface PlatformStats {
 
   // Geographic breakdown
   topCountriesOfBirth: CountryCount[];
+  foreignIdentityStats: ForeignIdentityStats;
 
   // Cache metadata
   cachedAt: Date;
   cacheExpiresAt: Date;
-}
-
-export interface DailyCount {
-  date: string; // ISO date string — "2024-11-19"
-  count: number;
-}
-
-export interface CountryCount {
-  country: string;
-  count: number;
 }
 
 interface CacheEntry {
@@ -90,7 +114,7 @@ export class AdminStatsService {
    * Served from cache if available and unexpired.
    * Recomputed from the database on cache miss or expiry.
    *
-   * All 9 database queries run in parallel — total latency equals
+   * All dashboard queries run in parallel — total latency equals
    * the slowest single query, not the sum of all queries.
    */
   async getOverviewStats(): Promise<PlatformStats> {
@@ -109,7 +133,7 @@ export class AdminStatsService {
     const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1_000);
     const last7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1_000);
 
-    // All 9 queries run simultaneously — critical for dashboard load time
+    // All queries run simultaneously — critical for dashboard load time
     const [
       totalUsers,
       usersVerifiedToday,
@@ -120,6 +144,9 @@ export class AdminStatsService {
       failedLoginsLast24h,
       rateLimitHitsLast24h,
       topCountries,
+      foreignIdentitySnapshotRows,
+      foreignIdentityTopCountries,
+      foreignIdentityRecentRegistrations,
     ] = await Promise.all([
       // 1. Total users
       this.prisma.user.count(),
@@ -174,6 +201,53 @@ export class AdminStatsService {
         ORDER BY count DESC
         LIMIT 5
       `,
+
+      this.prisma.$queryRaw<
+        {
+          total: bigint;
+          active: bigint;
+          registeredToday: bigint;
+          maleCount: bigint;
+          femaleCount: bigint;
+        }[]
+      >(
+        Prisma.sql`
+          SELECT
+            COUNT(*) AS total,
+            COUNT(*) FILTER (WHERE "isActive" = true) AS active,
+            COUNT(*) FILTER (WHERE "createdAt" >= ${todayStart}) AS "registeredToday",
+            COUNT(*) FILTER (WHERE gender = 'MALE') AS "maleCount",
+            COUNT(*) FILTER (WHERE gender = 'FEMALE') AS "femaleCount"
+          FROM foreign_identities
+        `,
+      ),
+
+      this.prisma.$queryRaw<{ country: string; count: bigint }[]>(
+        Prisma.sql`
+          SELECT "countryOfOrigin" AS country, COUNT(*) AS count
+          FROM foreign_identities
+          WHERE "countryOfOrigin" IS NOT NULL
+          GROUP BY "countryOfOrigin"
+          ORDER BY count DESC
+          LIMIT 5
+        `,
+      ),
+
+      this.prisma.$queryRaw<ForeignIdentityRecentRegistration[]>(
+        Prisma.sql`
+          SELECT
+            fin,
+            "firstName",
+            "lastName",
+            "countryOfOrigin",
+            "isActive",
+            "issuanceVersion",
+            "createdAt"
+          FROM foreign_identities
+          ORDER BY "createdAt" DESC
+          LIMIT 5
+        `,
+      ),
     ]);
 
     // Daily chart data — two more parallel queries.
@@ -195,7 +269,8 @@ export class AdminStatsService {
     // DATE_TRUNC returns a timestamp — node-postgres delivers it as a Date
     // object. The Map key is converted to YYYY-MM-DD via toISOString() to
     // match the labels produced by generateDateLabels().
-    const [registrationRows, verificationRows] = await Promise.all([
+    const [registrationRows, verificationRows, foreignIdentityRegistrationRows] =
+      await Promise.all([
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       this.prisma.$queryRaw<{ date: Date; count: bigint }[]>(
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -222,6 +297,17 @@ export class AdminStatsService {
           ORDER BY date ASC
         `,
       ),
+      this.prisma.$queryRaw<{ date: Date; count: bigint }[]>(
+        Prisma.sql`
+          SELECT
+            DATE_TRUNC('day', "createdAt") AS date,
+            COUNT(*) AS count
+          FROM foreign_identities
+          WHERE "createdAt" >= ${last7Days}
+          GROUP BY DATE_TRUNC('day', "createdAt")
+          ORDER BY date ASC
+        `,
+      ),
     ]);
 
     // Generate all 7 date labels — fill missing days with 0
@@ -234,6 +320,12 @@ export class AdminStatsService {
     const verificationMap = new Map(
       verificationRows.map((r) => [r.date.toISOString().split('T')[0], Number(r.count)]),
     );
+    const foreignIdentityRegistrationMap = new Map(
+      foreignIdentityRegistrationRows.map((r) => [
+        r.date.toISOString().split('T')[0],
+        Number(r.count),
+      ]),
+    );
 
     const registrationsLast7Days: DailyCount[] = dateLabels.map((date) => ({
       date,
@@ -244,6 +336,38 @@ export class AdminStatsService {
       date,
       count: verificationMap.get(date) ?? 0,
     }));
+    const foreignIdentityRegistrationsLast7Days: DailyCount[] = dateLabels.map(
+      (date) => ({
+        date,
+        count: foreignIdentityRegistrationMap.get(date) ?? 0,
+      }),
+    );
+
+    const foreignIdentitySnapshot = foreignIdentitySnapshotRows[0] ?? {
+      total: BigInt(0),
+      active: BigInt(0),
+      registeredToday: BigInt(0),
+      maleCount: BigInt(0),
+      femaleCount: BigInt(0),
+    };
+    const totalForeignIdentities = Number(foreignIdentitySnapshot.total);
+    const activeForeignIdentities = Number(foreignIdentitySnapshot.active);
+    const inactiveForeignIdentities =
+      totalForeignIdentities - activeForeignIdentities;
+    const registeredTodayForeignIdentities = Number(
+      foreignIdentitySnapshot.registeredToday,
+    );
+    const maleForeignIdentities = Number(foreignIdentitySnapshot.maleCount);
+    const femaleForeignIdentities = Number(foreignIdentitySnapshot.femaleCount);
+    const foreignIdentityActiveRate =
+      totalForeignIdentities > 0
+        ? parseFloat(
+            (
+              (activeForeignIdentities / totalForeignIdentities) *
+              100
+            ).toFixed(2),
+          )
+        : 0;
 
     const passRate =
       totalVerifications > 0
@@ -270,6 +394,21 @@ export class AdminStatsService {
         country: c.country,
         count: Number(c.count),
       })),
+      foreignIdentityStats: {
+        totalRegistered: totalForeignIdentities,
+        active: activeForeignIdentities,
+        inactive: inactiveForeignIdentities,
+        registeredToday: registeredTodayForeignIdentities,
+        activeRate: foreignIdentityActiveRate,
+        maleCount: maleForeignIdentities,
+        femaleCount: femaleForeignIdentities,
+        registrationsLast7Days: foreignIdentityRegistrationsLast7Days,
+        topCountriesOfOrigin: foreignIdentityTopCountries.map((country) => ({
+          country: country.country,
+          count: Number(country.count),
+        })),
+        recentRegistrations: foreignIdentityRecentRegistrations,
+      },
       cachedAt: now,
       cacheExpiresAt: expiresAt,
     };
