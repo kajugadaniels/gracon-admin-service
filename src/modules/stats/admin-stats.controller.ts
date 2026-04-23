@@ -53,6 +53,12 @@ call \`POST /stats/invalidate-cache\` (SUPER_ADMIN only).
 *Geographic breakdown:*
 - Top 5 countries of birth among all users with citizen identity records
 
+*Foreign identity registry analysis:*
+- Total FIN-backed records with active vs inactive split
+- Foreign identities registered today
+- 7-day FIN issuance trend
+- Top countries of origin and most recent FIN registrations
+
 **Example scenario:**
 Ishimwe Patrick opens the admin dashboard. The stats load in under 200ms
 because they are served from cache. He sees: 2,847 total users, 12
@@ -100,6 +106,42 @@ baseline. He navigates to Security Events to investigate.
           { country: 'DRC', count: 61 },
           { country: 'Kenya', count: 47 },
         ],
+        foreignIdentityStats: {
+          totalRegistered: 183,
+          active: 176,
+          inactive: 7,
+          registeredToday: 4,
+          activeRate: 96.17,
+          maleCount: 101,
+          femaleCount: 82,
+          registrationsLast7Days: [
+            { date: '2024-11-13', count: 2 },
+            { date: '2024-11-14', count: 5 },
+            { date: '2024-11-15', count: 1 },
+            { date: '2024-11-16', count: 0 },
+            { date: '2024-11-17', count: 3 },
+            { date: '2024-11-18', count: 6 },
+            { date: '2024-11-19', count: 4 },
+          ],
+          topCountriesOfOrigin: [
+            { country: 'KE', count: 48 },
+            { country: 'UG', count: 33 },
+            { country: 'TZ', count: 21 },
+            { country: 'CD', count: 19 },
+            { country: 'BI', count: 16 },
+          ],
+          recentRegistrations: [
+            {
+              fin: '2199180000001234',
+              firstName: 'Ishimwe',
+              lastName: 'Patrick',
+              countryOfOrigin: 'KE',
+              isActive: true,
+              issuanceVersion: 0,
+              createdAt: '2024-11-19T09:42:00.000Z',
+            },
+          ],
+        },
         cachedAt: '2024-11-19T10:00:00.000Z',
         cacheExpiresAt: '2024-11-19T10:05:00.000Z',
       },
