@@ -2,7 +2,7 @@
 
 Admin control-plane backend for the Gracon platform.
 
-This service owns administrator authentication, admin invitations, audit-log access, security-event inspection, verification review, user oversight, and dashboard statistics. It shares the main Postgres database with `api/auth`, but it is a separate security boundary with its own JWT secret and its own guards.
+This service owns administrator authentication, admin invitations, audit-log access, security-event inspection, verification review, user oversight, and dashboard statistics. It shares the main Postgres database with `api/auth`, but it is a separate security boundary with its own JWT secret and its own guards. The stats layer now also feeds foreign identity registry analytics into the admin dashboard.
 
 ## Overview
 
@@ -20,7 +20,7 @@ This service owns administrator authentication, admin invitations, audit-log acc
 - Verification review surfaces
 - Security event inspection
 - User listing and limited user-management actions
-- Dashboard metrics for the admin frontend
+- Dashboard metrics for the admin frontend, including foreign identity registry analytics
 
 ## Core Skills Needed
 
@@ -125,3 +125,7 @@ DOCS_BASIC_AUTH_PASS=
 - Check that user-token and admin-token trust boundaries are still isolated
 - Build before committing
 
+## Testing Rule
+
+- If code is pure logic or can be mocked cleanly, add a unit test.
+- If code depends on Nest bootstrapping, DB wiring, or HTTP flow, prefer e2e or integration tests.
