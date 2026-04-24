@@ -8,6 +8,7 @@ import {
   IsNotEmpty,
   IsNumber,
   IsIn,
+  IsOptional,
   Min,
   Max,
   validateSync,
@@ -61,6 +62,12 @@ class EnvironmentVariables {
       'Set it to the admin frontend URL e.g. http://localhost:4001',
   })
   ADMIN_FRONTEND_URL: string;
+
+  // Optional extra allowed origins for CORS, comma-separated.
+  // Leave empty unless another trusted frontend needs to call this API.
+  @IsOptional()
+  @IsString()
+  FRONTEND_URLS?: string;
 
   @IsString()
   @IsNotEmpty()
