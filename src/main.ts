@@ -40,8 +40,11 @@ async function bootstrap() {
   app.use(json({ limit: '10kb' }));
 
   // ── CORS ────────────────────────────────────────────────────────
-  // Only the admin frontend origin is allowed
-  app.enableCors(buildCorsConfig(adminFrontend));
+  // Strict allowlist composed from ADMIN_FRONTEND_URL plus any comma-separated
+  // entries in FRONTEND_URLS. Wildcards are never permitted.
+  app.enableCors(
+    buildCorsConfig(adminFrontend, config.get<string>('FRONTEND_URLS')),
+  );
 
   // ── Global prefix ───────────────────────────────────────────────
   app.setGlobalPrefix('api/v1');
