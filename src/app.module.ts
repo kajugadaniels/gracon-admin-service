@@ -14,6 +14,8 @@ import { AdminVerificationsModule } from './modules/verifications/admin-verifica
 import { AdminAuditModule } from './modules/audit/admin-audit.module';
 import { AdminSecurityEventsModule } from './modules/security-events/admin-security-events.module';
 import { AdminStatsModule } from './modules/stats/admin-stats.module';
+import { AdminSignaturesModule } from './modules/signatures/admin-signatures.module';
+import { AdminCertificatesModule } from './modules/certificates/admin-certificates.module';
 import { AdminAuthGuard } from './common/guards/admin-auth.guard';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { validateEnv } from './common/config/env.validation';
@@ -46,6 +48,8 @@ import { validateEnv } from './common/config/env.validation';
     AdminAuditModule,
     AdminSecurityEventsModule,
     AdminStatsModule,
+    AdminSignaturesModule,
+    AdminCertificatesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
