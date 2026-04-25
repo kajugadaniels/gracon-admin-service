@@ -34,6 +34,11 @@ model User {
   passwordResetTokens    PasswordResetToken[]
   // Security events written by auth service — read by admin service
   securityEvents         SecurityEventLog[]
+  // Personal signature artefacts — owned by api/signature, read here for admin views
+  personalKeyPairs       PersonalKeyPair[]
+  personalCertificates   PersonalCertificate[]
+  personalSignedDocuments PersonalSignedDocument[]
+  personalSignatureImages PersonalSignatureImage[]
 
   // ── Query pattern indexes ──────────────────────────────────────────────────
   // isActive and isIdVerified are boolean but queried with equality predicates
@@ -301,4 +306,125 @@ enum AdminAction {
   ADMIN_DEACTIVATED
   ADMIN_REACTIVATED
   ADMIN_INVITE_RESENT
+
+  // Personal signature / certificate lifecycle (admin-side actions)
+  // SIGNATURE_REVOKED is recorded when an admin revokes a user's active
+  // signature key pair via the admin dashboard. CERTIFICATE_REVOKED and
+  // CERTIFICATE_REISSUE_REQUESTED follow the same shape — actorId is the
+  // admin, targetUserId is the certificate's owner, and metadata carries
+  // the signature/certificate id plus the supplied reason.
+  SIGNATURE_REVOKED
+  CERTIFICATE_REVOKED
+  CERTIFICATE_REISSUE_REQUESTED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PERSONAL SIGNATURE SERVICE TABLES (api/signature/)
+//
+// These tables are owned by api/auth/ for migrations and written by
+// api/signature/ at runtime. api/admin/ only reads them (and updates the
+// `isRevoked`/`revokedAt`/`revokedReason`/`isActive` revocation flags) for
+// the admin dashboard. Do NOT run migrations from this service.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─── Personal Signature Images ────────────────────────────────────────────────
+// User-uploaded handwritten signature images, kept private in S3.
+// Read-only for the admin service — kept here for join/include support.
+model PersonalSignatureImage {
+  id        String   @id @default(uuid())
+  userId    String
+  s3Key     String
+  mimeType  String
+  sizeBytes Int
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("personal_signature_images")
+}
+
+// ─── Personal Key Pairs ───────────────────────────────────────────────────────
+// User cryptographic key pair. The admin service must never read
+// `privateKeyEncrypted` — it only reads the public/algorithm metadata and
+// flips `isActive` to false when an admin revokes the signature.
+model PersonalKeyPair {
+  id                  String               @id @default(uuid())
+  userId              String
+  algorithm           PersonalKeyAlgorithm
+  publicKey           String               @db.Text
+  privateKeyEncrypted String?              @db.Text
+  keyHandle           String?
+  fingerprint         String
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  personalCertificate PersonalCertificate?
+
+  @@index([userId])
+  @@index([fingerprint])
+  @@map("personal_key_pairs")
+}
+
+enum PersonalKeyAlgorithm {
+  RSA_2048
+  ED25519
+}
+
+// ─── Personal Certificates ────────────────────────────────────────────────────
+// X.509 certificate binding a user's verified identity to their public key.
+// Admin-side revocation flips `isRevoked` true and stores `revokedReason`.
+// `certificatePem` is the canonical PEM body served to verifiers.
+model PersonalCertificate {
+  id             String    @id @default(uuid())
+  userId         String
+  keyPairId      String    @unique
+  serialNumber   String    @unique
+  subjectCN      String
+  subjectO       String    @default("ID Verification Platform")
+  subjectC       String    @default("RW")
+  subjectUserId  String
+  notBefore      DateTime
+  notAfter       DateTime
+  certificatePem String    @db.Text
+  isRevoked      Boolean   @default(false)
+  revokedAt      DateTime?
+  revokedReason  String?
+  createdAt      DateTime  @default(now())
+
+  user       User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keyPair    PersonalKeyPair          @relation(fields: [keyPairId], references: [id])
+  signedDocs PersonalSignedDocument[]
+
+  @@index([userId])
+  @@index([serialNumber])
+  @@index([notAfter])
+  @@map("personal_certificates")
+}
+
+// ─── Personal Signed Documents ────────────────────────────────────────────────
+// Immutable history of signing events. Admin-side this powers both the
+// "documents signed" count on a signature row and the per-signature
+// signed-documents drill-down table.
+model PersonalSignedDocument {
+  id             String   @id @default(uuid())
+  userId         String
+  certificateId  String
+  documentName   String
+  documentHash   String
+  signatureBytes String   @db.Text
+  metadata       Json?
+  signedAt       DateTime @default(now())
+
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  certificate PersonalCertificate @relation(fields: [certificateId], references: [id])
+
+  @@index([userId])
+  @@index([certificateId])
+  @@index([documentHash])
+  @@index([signedAt])
+  @@map("personal_signed_documents")
 }
