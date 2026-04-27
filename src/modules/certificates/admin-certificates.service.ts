@@ -22,6 +22,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { QueryCertificatesDto } from './dto/query-certificates.dto';
 import { RevokeCertificateDto } from './dto/revoke-certificate.dto';
 import { ReissueCertificateDto } from './dto/reissue-certificate.dto';
+import { buildPaginatedResponse } from '../../common/pagination/paginated-response';
 import {
   buildCertificateListItem,
   buildCertificateDetail,
@@ -66,19 +67,14 @@ export class AdminCertificatesService {
       ];
     }
 
-    // The identity-type filter narrows the joined user — NID holders have a
-    // citizenIdentity row, FIN holders do not. Build the predicate fresh so
-    // we don't accidentally clobber another `user` filter from above.
+    // Identity type is encoded in the certificate subject identifier:
+    // FINs match the platform's /^2\d{15}$/ contract, while NIDs do not.
+    // Filter on the persisted subject value so the list stays correct even
+    // though FIN users now also have CitizenIdentity rows.
     if (dto.identityType === 'NID') {
-      const userWhere: Prisma.UserWhereInput =
-        (where.user as Prisma.UserWhereInput | undefined) ?? {};
-      userWhere.citizenIdentity = { isNot: null };
-      where.user = userWhere;
+      where.NOT = [{ subjectUserId: { startsWith: '2' } }];
     } else if (dto.identityType === 'FIN') {
-      const userWhere: Prisma.UserWhereInput =
-        (where.user as Prisma.UserWhereInput | undefined) ?? {};
-      userWhere.citizenIdentity = { is: null };
-      where.user = userWhere;
+      where.subjectUserId = { startsWith: '2' };
     }
 
     // Status filtering is the most subtle bit because EXPIRED is a derived
@@ -114,19 +110,12 @@ export class AdminCertificatesService {
       }),
     ]);
 
-    const totalPages = Math.max(1, Math.ceil(total / limit));
-
-    return {
-      data: rows.map((row) => buildCertificateListItem(row, now)),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-        hasNext: page < totalPages,
-        hasPrev: page > 1,
-      },
-    };
+    return buildPaginatedResponse({
+      items: rows.map((row) => buildCertificateListItem(row, now)),
+      total,
+      page,
+      limit,
+    });
   }
 
   // ─── Detail ──────────────────────────────────────────────────────────────
