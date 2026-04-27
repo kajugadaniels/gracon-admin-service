@@ -22,6 +22,7 @@ This service owns administrator authentication, admin invitations, audit-log acc
 - User listing and limited user-management actions
 - Reason-gated, audited NID and PID decrypt endpoints for SUPER_ADMIN
 - Dashboard metrics for the admin frontend, including foreign identity registry analytics
+- Admin certificate oversight, with certificate identity type inferred from the certificate subject identifier so NID and FIN holders are listed correctly
 
 ## Core Skills Needed
 
@@ -118,6 +119,7 @@ DOCS_BASIC_AUTH_PASS=
 - Log every mutation through the audit service
 - Never run Prisma migrations here; `api/auth` owns the shared schema lifecycle
 - Regenerate Prisma here whenever shared enum values change in `api/auth` so copied read models like `AdminAction` stay in sync with the database
+- When reading audit history for newer admin features, prefer stable metadata correlation keys over hard enum predicates if environments may lag on shared enum rollout
 - Never expose decrypted identifiers or internal admin secrets in responses
 
 ## Contribution Checklist
