@@ -551,6 +551,7 @@ export class AdminUsersService {
     userId: string,
     adminId: string,
     ipAddress: string,
+    reason: string,
   ): Promise<{ nid: string; userId: string }> {
     const identity = await this.prisma.citizenIdentity.findUnique({
       where: { userId },
@@ -575,14 +576,53 @@ export class AdminUsersService {
       metadata: {
         // Never log the actual NID value — log only that it was accessed
         accessedAt: new Date().toISOString(),
+        reason,
       },
     });
 
     this.logger.warn(
       `NID decrypted for userId: ${userId} by SUPER_ADMIN: ${adminId} ` +
-        `from IP: ${ipAddress}`,
+        `from IP: ${ipAddress}. Reason: ${reason}`,
     );
 
     return { nid, userId };
+  }
+
+  async decryptPid(
+    userId: string,
+    adminId: string,
+    ipAddress: string,
+    reason: string,
+  ): Promise<{ pid: string; userId: string }> {
+    const platformId = await this.prisma.platformId.findUnique({
+      where: { userId },
+      select: { pidEncrypted: true },
+    });
+
+    if (!platformId) {
+      throw new NotFoundException(
+        `No platform identity found for user ID "${userId}".`,
+      );
+    }
+
+    const pid = this.encryption.decrypt(platformId.pidEncrypted);
+
+    void this.audit.log({
+      adminId,
+      action: AdminAction.PID_DECRYPTED,
+      targetUserId: userId,
+      ipAddress,
+      metadata: {
+        accessedAt: new Date().toISOString(),
+        reason,
+      },
+    });
+
+    this.logger.warn(
+      `PID decrypted for userId: ${userId} by SUPER_ADMIN: ${adminId} ` +
+        `from IP: ${ipAddress}. Reason: ${reason}`,
+    );
+
+    return { pid, userId };
   }
 }
