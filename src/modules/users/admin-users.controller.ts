@@ -29,6 +29,7 @@ import { AdminUsersService } from './admin-users.service';
 import { QueryUsersDto } from './dto/query-users.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdateIdVerificationDto } from './dto/update-id-verification.dto';
+import { DecryptSensitiveIdentifierDto } from './dto/decrypt-sensitive-identifier.dto';
 import { RequireRole } from '../../common/decorators/require-role.decorator';
 import { CurrentAdmin } from '../../common/decorators/current-admin.decorator';
 import { AdminRole } from '@prisma/client';
@@ -130,7 +131,8 @@ verification history, active sessions, security events, and admin audit trail.
 **NID and PID handling:**
 - \`ADMIN\` role — sees masked values only (e.g. \`••••••••••••6790\`)
 - \`SUPER_ADMIN\` role — still sees masked values here. Call
-  \`GET /users/:id/decrypt-nid\` separately to get the full decrypted NID.
+  \`POST /users/:id/decrypt-nid\` or \`POST /users/:id/decrypt-pid\`
+  separately with a documented reason to request the full value.
   Every decrypt call is logged to \`AdminAuditLog\`.
 
 **What is returned:**
@@ -478,7 +480,7 @@ with reason "In-person document verification at Kigali HQ, 2024-11-20".
 
   // ── GET /users/:id/decrypt-nid ─────────────────────────────────────────────
 
-  @Get(':id/decrypt-nid')
+  @Post(':id/decrypt-nid')
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
   @RequireRole(AdminRole.SUPER_ADMIN)
   @Throttle({ strict: { limit: 10, ttl: 3_600_000 } })
@@ -547,6 +549,7 @@ SUPER_ADMIN a1b2c3d4 from IP 41.186.255.12 at 2024-11-20T14:30:00Z".
   })
   async decryptNid(
     @Param('id', ParseUUIDPipe) userId: string,
+    @Body() dto: DecryptSensitiveIdentifierDto,
     @CurrentAdmin() admin: AdminJwtPayload,
     @Req() req: Request,
   ) {
@@ -554,6 +557,70 @@ SUPER_ADMIN a1b2c3d4 from IP 41.186.255.12 at 2024-11-20T14:30:00Z".
       userId,
       admin.adminId,
       this.extractIp(req),
+      dto.reason,
+    );
+  }
+
+  // ── POST /users/:id/decrypt-pid ───────────────────────────────────────────
+
+  @Post(':id/decrypt-pid')
+  @RequireRole(AdminRole.SUPER_ADMIN)
+  @Throttle({ strict: { limit: 10, ttl: 3_600_000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Decrypt and return the full PID — SUPER_ADMIN only',
+    description: `
+**SUPER_ADMIN only.** Returns the full decrypted Platform ID Number for
+a user. Every call is logged to \`AdminAuditLog\` with action
+\`PID_DECRYPTED\`, the SUPER_ADMIN identity, timestamp, and the
+documented reason supplied in the request body.
+
+**Rate limited:** 10 calls per hour per SUPER_ADMIN.
+
+**Why this is separate:**
+The detail endpoint (\`GET /users/:id\`) always returns masked PID values.
+This decrypt endpoint exists so sensitive access stays individually
+rate-limited, reason-gated, and permanently traceable.
+    `,
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'UUID of the user whose PID should be decrypted.',
+    example: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Decrypted PID returned. Access logged to AdminAuditLog.',
+    schema: {
+      example: {
+        pid: 'P-2024-0001451',
+        userId: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Caller is not a SUPER_ADMIN.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'No platform identity found for this user.',
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Rate limit exceeded — maximum 10 PID decrypts per hour.',
+  })
+  async decryptPid(
+    @Param('id', ParseUUIDPipe) userId: string,
+    @Body() dto: DecryptSensitiveIdentifierDto,
+    @CurrentAdmin() admin: AdminJwtPayload,
+    @Req() req: Request,
+  ) {
+    return this.usersService.decryptPid(
+      userId,
+      admin.adminId,
+      this.extractIp(req),
+      dto.reason,
     );
   }
 
