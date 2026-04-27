@@ -26,19 +26,20 @@ model User {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  citizenIdentity        CitizenIdentity?
-  platformId             PlatformId?
-  emailVerificationToken EmailVerificationToken?
-  idVerifications        IdVerification[]
-  refreshTokens          RefreshToken[]
-  passwordResetTokens    PasswordResetToken[]
+  citizenIdentity          CitizenIdentity?
+  platformId               PlatformId?
+  emailVerificationToken   EmailVerificationToken?
+  idVerifications          IdVerification[]
+  refreshTokens            RefreshToken[]
+  passwordResetTokens      PasswordResetToken[]
   // Security events written by auth service — read by admin service
-  securityEvents         SecurityEventLog[]
+  securityEvents           SecurityEventLog[]
   // Personal signature artefacts — owned by api/signature, read here for admin views
-  personalKeyPairs       PersonalKeyPair[]
-  personalCertificates   PersonalCertificate[]
-  personalSignedDocuments PersonalSignedDocument[]
-  personalSignatureImages PersonalSignatureImage[]
+  personalKeyPairs         PersonalKeyPair[]
+  personalCertificates     PersonalCertificate[]
+  personalCertificateRequests PersonalCertificateRequest[]
+  personalSignedDocuments  PersonalSignedDocument[]
+  personalSignatureImages  PersonalSignatureImage[]
 
   // ── Query pattern indexes ──────────────────────────────────────────────────
   // isActive and isIdVerified are boolean but queried with equality predicates
@@ -54,20 +55,31 @@ model User {
 
 // ─── Citizen Identities ───────────────────────────────────────────────────────
 model CitizenIdentity {
-  id             String   @id @default(uuid())
-  userId         String   @unique
-  nidEncrypted   String
-  nidHash        String   @unique
+  id             String       @id @default(uuid())
+  userId         String       @unique
+  identityType   IdentityType @default(NID)
+  nidEncrypted   String?
+  nidHash        String?      @unique
+  finEncrypted   String?
+  finHash        String?      @unique
   surName        String
   postNames      String
   sex            String
   dateOfBirth    DateTime
   countryOfBirth String
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([identityType, userId])
   @@map("citizen_identities")
+}
+
+enum IdentityType {
+  NID
+  FIN
+
+  @@map("IDENTITY_TYPE")
 }
 
 // ─── Platform IDs ─────────────────────────────────────────────────────────────
@@ -327,6 +339,8 @@ enum AdminAction {
   SIGNATURE_REVOKED
   CERTIFICATE_REVOKED
   CERTIFICATE_REISSUE_REQUESTED
+  CERTIFICATE_REQUEST_APPROVED
+  CERTIFICATE_REQUEST_REJECTED
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -374,6 +388,7 @@ model PersonalKeyPair {
 
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   personalCertificate PersonalCertificate?
+  certificateRequests PersonalCertificateRequest[]
 
   @@index([userId])
   @@index([fingerprint])
@@ -383,6 +398,13 @@ model PersonalKeyPair {
 enum PersonalKeyAlgorithm {
   RSA_2048
   ED25519
+}
+
+enum CertificateRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
 }
 
 // ─── Personal Certificates ────────────────────────────────────────────────────
@@ -406,14 +428,39 @@ model PersonalCertificate {
   revokedReason  String?
   createdAt      DateTime  @default(now())
 
-  user       User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  keyPair    PersonalKeyPair          @relation(fields: [keyPairId], references: [id])
+  user          User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keyPair       PersonalKeyPair                 @relation(fields: [keyPairId], references: [id])
+  request    PersonalCertificateRequest?
   signedDocs PersonalSignedDocument[]
 
   @@index([userId])
   @@index([serialNumber])
   @@index([notAfter])
   @@map("personal_certificates")
+}
+
+model PersonalCertificateRequest {
+  id                     String                   @id @default(uuid())
+  userId                 String
+  keyPairId              String
+  status                 CertificateRequestStatus @default(PENDING)
+  requestedValidityYears Int                      @default(2)
+  reviewReason           String?
+  cancellationReason     String?
+  reviewedByAdminId      String?
+  reviewedAt             DateTime?
+  cancelledAt            DateTime?
+  issuedCertificateId    String?                  @unique
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keyPair           PersonalKeyPair      @relation(fields: [keyPairId], references: [id], onDelete: Cascade)
+  issuedCertificate PersonalCertificate? @relation(fields: [issuedCertificateId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, createdAt])
+  @@index([keyPairId, status])
+  @@map("personal_certificate_requests")
 }
 
 // ─── Personal Signed Documents ────────────────────────────────────────────────
