@@ -46,6 +46,10 @@ export type CertificateRow = {
   };
 };
 
+function isFinIdentifier(value: string | null | undefined): boolean {
+  return typeof value === 'string' && /^2\d{15}$/.test(value);
+}
+
 // ─── Status / identity-type derivation ──────────────────────────────────────
 
 /**
@@ -68,9 +72,9 @@ export function deriveCertificateStatus(
  * identity flow) maps to FIN.
  */
 export function deriveCertificateIdentityType(
-  user: Pick<CertificateRow['user'], 'citizenIdentity'>,
+  row: Pick<CertificateRow, 'subjectUserId'>,
 ): AdminCertificateIdentityType {
-  return user.citizenIdentity ? 'NID' : 'FIN';
+  return isFinIdentifier(row.subjectUserId) ? 'FIN' : 'NID';
 }
 
 /**
@@ -114,7 +118,7 @@ export function buildCertificateListItem(row: CertificateRow, now: Date = new Da
     certificateId: row.id,
     userId: row.userId,
     userName,
-    identityType: deriveCertificateIdentityType(row.user),
+    identityType: deriveCertificateIdentityType(row),
     country: row.subjectC,
     issuedAt: row.createdAt.toISOString(),
     expiresAt: row.notAfter.toISOString(),
@@ -153,7 +157,7 @@ export function buildCertificateDetail(row: CertificateRow, now: Date = new Date
     userName,
     userEmail: row.user.email,
     userImageUrl: row.user.imageUrl,
-    identityType: deriveCertificateIdentityType(row.user),
+    identityType: deriveCertificateIdentityType(row),
     serialNumber: row.serialNumber,
     issuer: dn, // self-signed today — issuer is the same DN
     subject: dn,
