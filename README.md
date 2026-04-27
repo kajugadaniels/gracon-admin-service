@@ -23,6 +23,7 @@ This service owns administrator authentication, admin invitations, audit-log acc
 - Reason-gated, audited NID and PID decrypt endpoints for SUPER_ADMIN
 - Dashboard metrics for the admin frontend, including foreign identity registry analytics
 - Admin certificate oversight, with certificate identity type inferred from the certificate subject identifier so NID and FIN holders are listed correctly
+- Certificate-request review workflows, including SUPER_ADMIN approval or rejection before a real personal certificate is issued
 
 ## Core Skills Needed
 
@@ -100,6 +101,9 @@ MAIL_PORT=
 MAIL_USER=
 MAIL_PASS=
 MAIL_FROM=
+SIGNATURE_SERVICE_URL=http://localhost:3002/api/v1
+SIGNATURE_SERVICE_USERNAME=service.signature-admin@yourplatform.com
+SIGNATURE_SERVICE_PASSWORD=your_signature_service_review_password
 FRONTEND_URL=http://localhost:4001
 DOCS_BASIC_AUTH_USER=
 DOCS_BASIC_AUTH_PASS=
@@ -110,6 +114,7 @@ DOCS_BASIC_AUTH_PASS=
 - Receives requests only from `app/admin`
 - Reads the shared auth database, but does not become the auth issuer
 - Must never accept user JWTs from `api/auth`
+- Calls `api/signature` only through the internal certificate-request review bridge for approval and rejection
 - Should never call unrelated platform services directly for business logic
 
 ## Important Rules
