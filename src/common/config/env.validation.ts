@@ -84,6 +84,18 @@ class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   MAIL_FROM: string;
+
+  @IsString()
+  @IsNotEmpty()
+  SIGNATURE_SERVICE_URL: string;
+
+  @IsString()
+  @IsNotEmpty()
+  SIGNATURE_SERVICE_USERNAME: string;
+
+  @IsString()
+  @IsNotEmpty()
+  SIGNATURE_SERVICE_PASSWORD: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {
