@@ -1,13 +1,18 @@
 // AdminSignaturesService
 //
-// Owns all read/write logic for the admin signatures dashboard. Reads
-// `PersonalKeyPair` + linked `PersonalCertificate` + the user's identity
-// (joined from `users` and `citizen_identities`), then projects the result
-// into the public shape consumed by the admin frontend's signatures pages.
+// Owns all read/write logic for the admin signatures dashboard.
 //
-// Revocation is the only mutating operation here: it flips the linked
-// certificate to revoked, marks the key pair inactive, and writes an
-// `AdminAuditLog` entry. The plaintext private key is never read or touched.
+// A "signature" on the dashboard is anchored on `PersonalCertificate` —
+// the user-meaningful unit that binds a verified identity to a key pair.
+// A key pair without a certificate cannot be used to sign, so anchoring
+// on the certificate avoids ever surfacing unusable rows. The linked
+// `PersonalKeyPair` is read for the algorithm and active flag, and
+// `PersonalSignedDocument` is counted/most-recent-fetched to power the
+// "Documents Signed" and "Last Used" columns.
+//
+// Revocation is the only mutating operation here: it flips the certificate
+// to revoked, marks the key pair inactive, and writes an `AdminAuditLog`
+// entry. The plaintext private key is never read or touched.
 import {
   Injectable,
   NotFoundException,
@@ -20,11 +25,18 @@ import { QuerySignaturesDto } from './dto/query-signatures.dto';
 import { ListSignedDocumentsDto } from './dto/list-signed-documents.dto';
 import { RevokeSignatureDto } from './dto/revoke-signature.dto';
 import {
+  buildPaginatedResponse,
+  type PaginatedResponse,
+} from '../../common/pagination/paginated-response';
+import {
   buildSignatureListItem,
   buildSignatureDetail,
   deriveSignatureStatusFromRow,
   formatSignatureSignedDocument,
-  type SignatureKeyPairRow,
+  type SignatureCertificateRow,
+  type SignatureListItem,
+  type SignatureDetailResponse,
+  type SignatureSignedDocumentItem,
 } from './helpers/admin-signatures.helper';
 
 @Injectable()
@@ -37,24 +49,28 @@ export class AdminSignaturesService {
   // ─── List ────────────────────────────────────────────────────────────────
 
   /**
-   * Lists every personal signature key pair across all users for the admin
-   * dashboard, with pagination, search and status/algorithm/date filters.
+   * Lists every issued personal certificate (= signature) across all users
+   * for the admin dashboard, with pagination, search and filters.
    *
-   * The ACTIVE/REVOKED filter is applied at the SQL level via the certificate
-   * join — that keeps pagination math correct (we don't filter in memory).
+   * Filters are translated into concrete SQL predicates so pagination math
+   * stays correct — we never filter in memory after `take`.
    *
    * @param dto - Validated query parameters from the controller.
-   * @returns A paginated envelope matching `PaginatedSignaturesResponse` on the frontend.
+   * @returns A `PaginatedResponse<SignatureListItem>` matching the admin
+   *          frontend's shared pagination contract.
    */
-  async listSignatures(dto: QuerySignaturesDto) {
+  async listSignatures(
+    dto: QuerySignaturesDto,
+  ): Promise<PaginatedResponse<SignatureListItem>> {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.PersonalKeyPairWhereInput = {};
+    const where: Prisma.PersonalCertificateWhereInput = {};
+    let keyPairFilter: Prisma.PersonalKeyPairWhereInput = {};
 
     if (dto.algorithm) {
-      where.algorithm = dto.algorithm;
+      keyPairFilter = { ...keyPairFilter, algorithm: dto.algorithm };
     }
 
     if (dto.createdFrom || dto.createdTo) {
@@ -85,18 +101,24 @@ export class AdminSignaturesService {
     }
 
     if (dto.status === 'ACTIVE') {
-      where.isActive = true;
-      where.personalCertificate = { is: { isRevoked: false } };
+      where.isRevoked = false;
+      keyPairFilter = { ...keyPairFilter, isActive: true };
     } else if (dto.status === 'REVOKED') {
+      // A signature is REVOKED if either the cert is revoked or the key
+      // pair has been deactivated (e.g. after key rotation).
       where.OR = [
-        { isActive: false },
-        { personalCertificate: { is: { isRevoked: true } } },
+        { isRevoked: true },
+        { keyPair: { is: { isActive: false } } },
       ];
     }
 
+    if (Object.keys(keyPairFilter).length > 0) {
+      where.keyPair = { is: keyPairFilter };
+    }
+
     const [total, rows] = await Promise.all([
-      this.prisma.personalKeyPair.count({ where }),
-      this.prisma.personalKeyPair.findMany({
+      this.prisma.personalCertificate.count({ where }),
+      this.prisma.personalCertificate.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip,
@@ -105,19 +127,12 @@ export class AdminSignaturesService {
       }),
     ]);
 
-    const totalPages = Math.max(1, Math.ceil(total / limit));
-
-    return {
-      data: rows.map((row) => buildSignatureListItem(row)),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-        hasNext: page < totalPages,
-        hasPrev: page > 1,
-      },
-    };
+    return buildPaginatedResponse({
+      items: rows.map((row) => buildSignatureListItem(row)),
+      total,
+      page,
+      limit,
+    });
   }
 
   // ─── Detail ──────────────────────────────────────────────────────────────
@@ -126,12 +141,12 @@ export class AdminSignaturesService {
    * Returns the full signature detail payload, including the recent admin
    * audit history filtered to this specific signature id.
    *
-   * @param signatureId - The PersonalKeyPair id (this is what the admin UI
-   *                      treats as the signature id).
-   * @throws NotFoundException when no key pair exists with this id.
+   * @param signatureId - The PersonalCertificate id (the dashboard treats
+   *                      this as the signature id).
+   * @throws NotFoundException when no certificate exists with this id.
    */
-  async getSignatureDetail(signatureId: string) {
-    const row = await this.prisma.personalKeyPair.findUnique({
+  async getSignatureDetail(signatureId: string): Promise<SignatureDetailResponse> {
+    const row = await this.prisma.personalCertificate.findUnique({
       where: { id: signatureId },
       select: this.signatureRowSelect(),
     });
@@ -140,9 +155,10 @@ export class AdminSignaturesService {
       throw new NotFoundException('Signature not found.');
     }
 
-    // Audit history for this signature — filtered via metadata.signatureId.
-    // We use a Prisma path filter on Json so the index on (action, createdAt)
-    // can still help. Limited to 25 rows because the UI only shows recent.
+    // Audit history for this signature — filtered via metadata.signatureId
+    // (= certificate id under the new anchor). The Json path filter still
+    // benefits from the (action, createdAt) index. Limited to 25 rows
+    // because the UI only shows the most recent.
     const auditRows = await this.prisma.adminAuditLog.findMany({
       where: {
         action: { in: ['SIGNATURE_REVOKED'] },
@@ -175,39 +191,27 @@ export class AdminSignaturesService {
    * Paginated list of documents signed by this signature, used as the
    * "Documents" tab on the admin signature detail page.
    */
-  async listSignedDocuments(signatureId: string, dto: ListSignedDocumentsDto) {
-    // Resolve the certificate id from the signature key pair first — the
-    // frontend treats key-pair-id as the signature-id, but signed documents
-    // are FK'd to the certificate.
-    const keyPair = await this.prisma.personalKeyPair.findUnique({
+  async listSignedDocuments(
+    signatureId: string,
+    dto: ListSignedDocumentsDto,
+  ): Promise<PaginatedResponse<SignatureSignedDocumentItem>> {
+    // signatureId is the certificate id under the new anchor.
+    const cert = await this.prisma.personalCertificate.findUnique({
       where: { id: signatureId },
-      select: { id: true, personalCertificate: { select: { id: true } } },
+      select: { id: true },
     });
 
-    if (!keyPair) {
+    if (!cert) {
       throw new NotFoundException('Signature not found.');
     }
 
-    const certificateId = keyPair.personalCertificate?.id;
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    if (!certificateId) {
-      return {
-        data: [],
-        pagination: {
-          page,
-          limit,
-          total: 0,
-          totalPages: 1,
-          hasNext: false,
-          hasPrev: false,
-        },
-      };
-    }
-
-    const where: Prisma.PersonalSignedDocumentWhereInput = { certificateId };
+    const where: Prisma.PersonalSignedDocumentWhereInput = {
+      certificateId: signatureId,
+    };
 
     const [total, rows] = await Promise.all([
       this.prisma.personalSignedDocument.count({ where }),
@@ -226,30 +230,23 @@ export class AdminSignaturesService {
       }),
     ]);
 
-    const totalPages = Math.max(1, Math.ceil(total / limit));
-
-    return {
-      data: rows.map((row) => formatSignatureSignedDocument(row)),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-        hasNext: page < totalPages,
-        hasPrev: page > 1,
-      },
-    };
+    return buildPaginatedResponse({
+      items: rows.map((row) => formatSignatureSignedDocument(row)),
+      total,
+      page,
+      limit,
+    });
   }
 
   // ─── Revoke ──────────────────────────────────────────────────────────────
 
   /**
-   * Revokes a signature on behalf of an admin. Flips the linked
-   * certificate's revocation flags, marks the key pair inactive, and writes
-   * a `SIGNATURE_REVOKED` audit log entry that captures the reason.
+   * Revokes a signature on behalf of an admin. Flips the certificate to
+   * revoked, marks the linked key pair inactive, and writes a
+   * `SIGNATURE_REVOKED` audit log entry capturing the reason.
    *
    * Idempotent at the API surface: a 409 is returned if the signature is
-   * already revoked so the UI can show a clear message instead of pretending
+   * already revoked so the UI shows a clear message instead of pretending
    * a no-op succeeded.
    */
   async revokeSignature(params: {
@@ -258,7 +255,7 @@ export class AdminSignaturesService {
     ipAddress: string | null;
     dto: RevokeSignatureDto;
   }) {
-    const row = await this.prisma.personalKeyPair.findUnique({
+    const row = await this.prisma.personalCertificate.findUnique({
       where: { id: params.signatureId },
       select: this.signatureRowSelect(),
     });
@@ -267,30 +264,27 @@ export class AdminSignaturesService {
       throw new NotFoundException('Signature not found.');
     }
 
-    const status = deriveSignatureStatusFromRow(row);
-    if (status === 'REVOKED') {
+    if (deriveSignatureStatusFromRow(row) === 'REVOKED') {
       throw new ConflictException('Signature is already revoked.');
     }
 
     const revokedAt = new Date();
     const reason = params.dto.reason.trim();
 
-    // Wrap both writes in a transaction so partial failure cannot leave the
-    // signature in an inconsistent half-revoked state.
+    // Wrap both writes in a transaction so partial failure cannot leave
+    // the signature in an inconsistent half-revoked state.
     await this.prisma.$transaction(async (tx) => {
-      if (row.personalCertificate) {
-        await tx.personalCertificate.update({
-          where: { id: row.personalCertificate.id },
-          data: {
-            isRevoked: true,
-            revokedAt,
-            revokedReason: reason,
-          },
-        });
-      }
+      await tx.personalCertificate.update({
+        where: { id: row.id },
+        data: {
+          isRevoked: true,
+          revokedAt,
+          revokedReason: reason,
+        },
+      });
 
       await tx.personalKeyPair.update({
-        where: { id: row.id },
+        where: { id: row.keyPair.id },
         data: { isActive: false },
       });
     });
@@ -302,7 +296,8 @@ export class AdminSignaturesService {
       ipAddress: params.ipAddress ?? undefined,
       metadata: {
         signatureId: row.id,
-        certificateId: row.personalCertificate?.id ?? null,
+        certificateId: row.id,
+        keyPairId: row.keyPair.id,
         reason,
         revokedAt: revokedAt.toISOString(),
       },
@@ -314,20 +309,23 @@ export class AdminSignaturesService {
   // ─── Internal — Prisma select shape ──────────────────────────────────────
   //
   // Centralised so list/detail/revoke all read the exact same columns and
-  // pass the same `SignatureKeyPairRow` type into the helpers.
+  // pass the same `SignatureCertificateRow` type into the helpers.
 
   /**
-   * Returns the canonical Prisma select for the signature list/detail rows.
-   * Kept in one place so list and detail share the same shape (and so the
-   * helper module can rely on a single TypeScript type).
+   * Returns the canonical Prisma select for the signature (certificate)
+   * rows. Includes the joined user (with active signature image preview),
+   * the key pair (for algorithm + active flag), and the signed-documents
+   * count + most-recent timestamp.
    */
   private signatureRowSelect() {
     return {
       id: true,
       userId: true,
-      algorithm: true,
-      isActive: true,
+      isRevoked: true,
+      revokedAt: true,
+      revokedReason: true,
       createdAt: true,
+      notAfter: true,
       user: {
         select: {
           email: true,
@@ -335,26 +333,30 @@ export class AdminSignaturesService {
           citizenIdentity: {
             select: { surName: true, postNames: true },
           },
-        },
-      },
-      personalCertificate: {
-        select: {
-          id: true,
-          isRevoked: true,
-          revokedAt: true,
-          revokedReason: true,
-          notAfter: true,
-          _count: { select: { signedDocs: true } },
-          signedDocs: {
-            orderBy: { signedAt: 'desc' as const },
+          // The user's active signature image — used to preview the
+          // handwritten signature next to the cert on the detail page.
+          personalSignatureImages: {
+            where: { isActive: true },
+            orderBy: { createdAt: 'desc' as const },
             take: 1,
-            select: { signedAt: true },
+            select: { id: true, s3Key: true, mimeType: true, sizeBytes: true },
           },
         },
       },
-    } satisfies Prisma.PersonalKeyPairSelect;
+      keyPair: {
+        select: {
+          id: true,
+          algorithm: true,
+          isActive: true,
+          createdAt: true,
+        },
+      },
+      _count: { select: { signedDocs: true } },
+      signedDocs: {
+        orderBy: { signedAt: 'desc' as const },
+        take: 1,
+        select: { signedAt: true },
+      },
+    } satisfies Prisma.PersonalCertificateSelect;
   }
 }
-
-// Re-export the row type so the helper keeps a stable contract with the service.
-export type { SignatureKeyPairRow };
