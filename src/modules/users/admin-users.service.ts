@@ -564,6 +564,12 @@ export class AdminUsersService {
       );
     }
 
+    if (!identity.nidEncrypted) {
+      throw new NotFoundException(
+        `No encrypted national ID is stored for user ID "${userId}".`,
+      );
+    }
+
     const nid = this.encryption.decrypt(identity.nidEncrypted);
 
     // Log immediately — before returning the value

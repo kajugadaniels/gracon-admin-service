@@ -1,24 +1,31 @@
 // Pure helpers for the admin signatures module.
 //
 // Everything in this file is side-effect free so it can be unit-tested in
-// isolation from Prisma. The service layer feeds in raw Prisma rows, the
-// helpers return the public shape consumed by the admin frontend.
-import { AdminRole, Prisma } from '@prisma/client';
+// isolation from Prisma. The service layer feeds in raw certificate rows,
+// the helpers return the public shape consumed by the admin frontend.
+//
+// A "signature" on the dashboard is a `PersonalCertificate` with its
+// linked `PersonalKeyPair` and the signing user's identity. Status,
+// "documents signed" count, and "last used" timestamp are all derived
+// here from the certificate row.
+import { AdminRole, PersonalKeyAlgorithm, Prisma } from '@prisma/client';
 
 /** Public-facing signature status as rendered by the admin dashboard. */
 export type AdminSignatureStatus = 'ACTIVE' | 'REVOKED';
 
 /**
  * Canonical shape of the rows returned by the centralised Prisma select in
- * `admin-signatures.service.ts`. Keeping this in one place means the helpers
- * never accept a wider type than the service actually selects.
+ * `admin-signatures.service.ts`. Keeping this in one place means the
+ * helpers never accept a wider type than the service actually selects.
  */
-export type SignatureKeyPairRow = {
+export type SignatureCertificateRow = {
   id: string;
   userId: string;
-  algorithm: 'RSA_2048' | 'ED25519';
-  isActive: boolean;
+  isRevoked: boolean;
+  revokedAt: Date | null;
+  revokedReason: string | null;
   createdAt: Date;
+  notAfter: Date;
   user: {
     email: string;
     imageUrl: string | null;
@@ -26,16 +33,21 @@ export type SignatureKeyPairRow = {
       surName: string;
       postNames: string;
     } | null;
+    personalSignatureImages: {
+      id: string;
+      s3Key: string;
+      mimeType: string;
+      sizeBytes: number;
+    }[];
   };
-  personalCertificate: {
+  keyPair: {
     id: string;
-    isRevoked: boolean;
-    revokedAt: Date | null;
-    revokedReason: string | null;
-    notAfter: Date;
-    _count: { signedDocs: number };
-    signedDocs: { signedAt: Date }[];
-  } | null;
+    algorithm: PersonalKeyAlgorithm;
+    isActive: boolean;
+    createdAt: Date;
+  };
+  _count: { signedDocs: number };
+  signedDocs: { signedAt: Date }[];
 };
 
 /** Audit row shape consumed by `buildSignatureDetail`. */
@@ -52,12 +64,63 @@ export type SignatureAuditRow = {
   } | null;
 };
 
+// ─── Public shapes returned by the service ──────────────────────────────────
+
+/** Compact signature row rendered by the admin signatures table. */
+export interface SignatureListItem {
+  signatureId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  algorithm: PersonalKeyAlgorithm;
+  createdAt: string;
+  lastUsedAt: string | null;
+  documentsSigned: number;
+  status: AdminSignatureStatus;
+}
+
+/** One audit log entry shown on the signature detail page. */
+export interface SignatureAuditItem {
+  id: string;
+  action: string;
+  actorName: string;
+  actorRole: AdminRole;
+  createdAt: string;
+  metadata?: Record<string, string | number | boolean | null>;
+}
+
+/** Optional preview metadata for the user's active handwritten signature. */
+export interface SignatureImagePreview {
+  imageId: string;
+  s3Key: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+/** Full signature detail rendered on the signature detail page. */
+export interface SignatureDetailResponse extends SignatureListItem {
+  userImageUrl: string | null;
+  signatureImage: SignatureImagePreview | null;
+  auditLog: SignatureAuditItem[];
+}
+
+/** One row rendered in the per-signature signed-documents drilldown. */
+export interface SignatureSignedDocumentItem {
+  documentId: string;
+  documentHash: string;
+  documentName: string;
+  signedAt: string;
+  verificationStatus: 'VALID' | 'INVALID' | 'UNKNOWN';
+  documentSource: string;
+}
+
 // ─── Display name helpers ───────────────────────────────────────────────────
 
 /**
- * Combines the `postNames + surName` citizen identity fields into the
- * display name shown on signatures and audit entries. Falls back to the
- * email when no identity is attached (e.g. during local seed data).
+ * Combines the citizen identity `postNames + surName` into the display
+ * name used across signature rows and audit entries. Falls back to the
+ * email when the user has no citizen identity attached (e.g. seed data
+ * or in-progress identity verification).
  */
 export function buildSignerDisplayName(input: {
   postNames: string | null | undefined;
@@ -71,43 +134,46 @@ export function buildSignerDisplayName(input: {
 // ─── Status derivation ──────────────────────────────────────────────────────
 
 /**
- * Returns ACTIVE when both the key pair is active and its certificate (if
- * any) is not revoked. Anything else is REVOKED — that includes a
- * deactivated key pair without a certificate, which can happen if the user
- * rotated their keys before issuing one.
+ * A signature is REVOKED whenever the certificate is revoked or its key
+ * pair has been deactivated (e.g. after rotation). Anything else is
+ * ACTIVE. Expired certificates are still treated as ACTIVE here because
+ * the frontend type only models ACTIVE/REVOKED — expiry has its own
+ * dedicated treatment on the certificates dashboard.
  */
 export function deriveSignatureStatusFromRow(
-  row: SignatureKeyPairRow,
+  row: Pick<SignatureCertificateRow, 'isRevoked' | 'keyPair'>,
 ): AdminSignatureStatus {
-  if (!row.isActive) return 'REVOKED';
-  if (row.personalCertificate?.isRevoked) return 'REVOKED';
+  if (row.isRevoked) return 'REVOKED';
+  if (!row.keyPair.isActive) return 'REVOKED';
   return 'ACTIVE';
 }
 
 // ─── List item formatter ────────────────────────────────────────────────────
 
 /**
- * Projects a Prisma row into the `SignatureListItem` shape consumed by the
- * admin frontend's signatures table.
+ * Projects a Prisma certificate row into the `SignatureListItem` shape
+ * consumed by the admin frontend's signatures table.
  */
-export function buildSignatureListItem(row: SignatureKeyPairRow) {
+export function buildSignatureListItem(
+  row: SignatureCertificateRow,
+): SignatureListItem {
   const displayName = buildSignerDisplayName({
     postNames: row.user.citizenIdentity?.postNames,
     surName: row.user.citizenIdentity?.surName,
     fallback: row.user.email,
   });
 
-  // The most recent signed-document timestamp is "last used"; the count of
+  // Most recent signed-document timestamp is "last used"; the count of
   // signed documents drives the "Signed" column.
-  const lastSignedAt = row.personalCertificate?.signedDocs[0]?.signedAt ?? null;
-  const documentsSigned = row.personalCertificate?._count.signedDocs ?? 0;
+  const lastSignedAt = row.signedDocs[0]?.signedAt ?? null;
+  const documentsSigned = row._count.signedDocs;
 
   return {
     signatureId: row.id,
     userId: row.userId,
     userName: displayName,
     userEmail: row.user.email,
-    algorithm: row.algorithm,
+    algorithm: row.keyPair.algorithm,
     createdAt: row.createdAt.toISOString(),
     lastUsedAt: lastSignedAt ? lastSignedAt.toISOString() : null,
     documentsSigned,
@@ -118,20 +184,24 @@ export function buildSignatureListItem(row: SignatureKeyPairRow) {
 // ─── Detail formatter ───────────────────────────────────────────────────────
 
 /**
- * Projects a Prisma row + the admin audit slice into the `SignatureDetail`
- * shape consumed by the signature detail page on the admin frontend.
+ * Projects a Prisma certificate row + the matching audit slice into the
+ * full `SignatureDetailResponse` shape used by the signature detail page.
+ *
+ * Surfaces the user's active handwritten signature image (if any) so the
+ * dashboard can render a preview alongside the cert metadata.
  */
 export function buildSignatureDetail(
-  row: SignatureKeyPairRow,
+  row: SignatureCertificateRow,
   auditRows: SignatureAuditRow[],
-) {
+): SignatureDetailResponse {
   const displayName = buildSignerDisplayName({
     postNames: row.user.citizenIdentity?.postNames,
     surName: row.user.citizenIdentity?.surName,
     fallback: row.user.email,
   });
-  const lastSignedAt = row.personalCertificate?.signedDocs[0]?.signedAt ?? null;
-  const documentsSigned = row.personalCertificate?._count.signedDocs ?? 0;
+  const lastSignedAt = row.signedDocs[0]?.signedAt ?? null;
+  const documentsSigned = row._count.signedDocs;
+  const activeImage = row.user.personalSignatureImages[0] ?? null;
 
   return {
     signatureId: row.id,
@@ -139,17 +209,25 @@ export function buildSignatureDetail(
     userName: displayName,
     userEmail: row.user.email,
     userImageUrl: row.user.imageUrl,
-    algorithm: row.algorithm,
+    algorithm: row.keyPair.algorithm,
     createdAt: row.createdAt.toISOString(),
     lastUsedAt: lastSignedAt ? lastSignedAt.toISOString() : null,
     status: deriveSignatureStatusFromRow(row),
     documentsSigned,
+    signatureImage: activeImage
+      ? {
+          imageId: activeImage.id,
+          s3Key: activeImage.s3Key,
+          mimeType: activeImage.mimeType,
+          sizeBytes: activeImage.sizeBytes,
+        }
+      : null,
     auditLog: auditRows.map((entry) => formatSignatureAuditEntry(entry)),
   };
 }
 
 /** Sanitises one audit row into the `SignatureAuditItem` shape. */
-function formatSignatureAuditEntry(entry: SignatureAuditRow) {
+function formatSignatureAuditEntry(entry: SignatureAuditRow): SignatureAuditItem {
   // Admins use firstName/lastName directly (no citizenIdentity join), so
   // map them through the same display-name builder for consistent output.
   const actorName = buildSignerDisplayName({
@@ -162,7 +240,7 @@ function formatSignatureAuditEntry(entry: SignatureAuditRow) {
     id: entry.id,
     action: entry.action,
     actorName,
-    actorRole: entry.admin?.role ?? 'ADMIN',
+    actorRole: entry.admin?.role ?? AdminRole.ADMIN,
     createdAt: entry.createdAt.toISOString(),
     metadata: sanitizeAuditMetadata(entry.metadata),
   };
@@ -170,8 +248,8 @@ function formatSignatureAuditEntry(entry: SignatureAuditRow) {
 
 /**
  * Allow-list scrub of the audit metadata JSON blob — only string/number/
- * boolean/null primitives survive, so we never accidentally leak a nested
- * object containing sensitive context to the client.
+ * boolean/null primitives survive, so we never accidentally leak nested
+ * objects with sensitive context out to the dashboard.
  */
 function sanitizeAuditMetadata(
   metadata: Prisma.JsonValue | null,
@@ -207,20 +285,22 @@ type SignedDocumentRow = {
 };
 
 /**
- * Projects a signed-document row into the `SignatureDocumentItem` shape
- * consumed by the per-signature documents drill-down table.
+ * Projects a signed-document row into the `SignatureSignedDocumentItem`
+ * shape consumed by the per-signature documents drilldown table.
  *
- * The frontend type carries a `verificationStatus` and `documentSource`
- * field. We do not yet store either explicitly — return safe defaults here
- * so the table stays type-consistent until that data is wired in.
+ * The frontend type carries `verificationStatus` and `documentSource`
+ * fields. We do not yet store either explicitly — return safe defaults
+ * here so the table stays type-consistent until that data is wired in.
  */
-export function formatSignatureSignedDocument(row: SignedDocumentRow) {
+export function formatSignatureSignedDocument(
+  row: SignedDocumentRow,
+): SignatureSignedDocumentItem {
   return {
     documentId: row.id,
     documentHash: row.documentHash,
     documentName: row.documentName,
     signedAt: row.signedAt.toISOString(),
-    verificationStatus: 'UNKNOWN' as const,
+    verificationStatus: 'UNKNOWN',
     documentSource: extractDocumentSource(row.metadata) ?? 'personal',
   };
 }
