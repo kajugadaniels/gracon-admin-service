@@ -20,6 +20,7 @@ This service owns administrator authentication, admin invitations, audit-log acc
 - Verification review surfaces
 - Security event inspection
 - User listing and limited user-management actions
+- Reason-gated, audited NID and PID decrypt endpoints for SUPER_ADMIN
 - Dashboard metrics for the admin frontend, including foreign identity registry analytics
 
 ## Core Skills Needed
