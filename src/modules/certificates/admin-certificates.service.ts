@@ -16,12 +16,14 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { CertificateRequestStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { QueryCertificatesDto } from './dto/query-certificates.dto';
+import { QueryCertificateRequestsDto } from './dto/query-certificate-requests.dto';
 import { RevokeCertificateDto } from './dto/revoke-certificate.dto';
 import { ReissueCertificateDto } from './dto/reissue-certificate.dto';
+import { ReviewCertificateRequestDto } from './dto/review-certificate-request.dto';
 import { buildPaginatedResponse } from '../../common/pagination/paginated-response';
 import {
   buildCertificateListItem,
@@ -31,6 +33,12 @@ import {
   deriveCertificateStatus,
   type CertificateRow,
 } from './helpers/admin-certificates.helper';
+import {
+  buildCertificateRequestDetail,
+  buildCertificateRequestListItem,
+  type CertificateRequestRow,
+} from './helpers/admin-certificate-requests.helper';
+import { SignatureServiceClient } from './signature-service.client';
 
 @Injectable()
 export class AdminCertificatesService {
@@ -39,6 +47,7 @@ export class AdminCertificatesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly signatureServiceClient: SignatureServiceClient,
   ) {}
 
   // ─── List ────────────────────────────────────────────────────────────────
@@ -127,6 +136,36 @@ export class AdminCertificatesService {
   async getCertificateDetail(certificateId: string) {
     const row = await this.findCertificateOrThrow(certificateId);
     return buildCertificateDetail(row);
+  }
+
+  async listCertificateRequests(dto: QueryCertificateRequestsDto) {
+    const page = dto.page ?? 1;
+    const limit = dto.limit ?? 20;
+    const skip = (page - 1) * limit;
+    const where = this.buildRequestWhere(dto);
+
+    const [total, rows] = await Promise.all([
+      this.prisma.personalCertificateRequest.count({ where }),
+      this.prisma.personalCertificateRequest.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: this.certificateRequestRowSelect(),
+      }),
+    ]);
+
+    return buildPaginatedResponse({
+      items: rows.map((row) => buildCertificateRequestListItem(row)),
+      total,
+      page,
+      limit,
+    });
+  }
+
+  async getCertificateRequestDetail(requestId: string) {
+    const row = await this.findCertificateRequestOrThrow(requestId);
+    return buildCertificateRequestDetail(row);
   }
 
   // ─── Downloads ───────────────────────────────────────────────────────────
@@ -246,6 +285,67 @@ export class AdminCertificatesService {
     return this.getCertificateDetail(params.certificateId);
   }
 
+  async approveCertificateRequest(params: {
+    requestId: string;
+    adminId: string;
+    ipAddress: string | null;
+    dto: ReviewCertificateRequestDto;
+  }) {
+    const request = await this.findCertificateRequestOrThrow(params.requestId);
+    this.ensurePendingRequest(request);
+
+    const certificate = await this.signatureServiceClient.approveCertificateRequest(
+      params.requestId,
+      {
+        adminId: params.adminId,
+        reason: params.dto.reason.trim(),
+      },
+    );
+
+    await this.audit.log({
+      adminId: params.adminId,
+      action: 'CERTIFICATE_REQUEST_APPROVED',
+      targetUserId: request.userId,
+      ipAddress: params.ipAddress ?? undefined,
+      metadata: {
+        requestId: request.id,
+        issuedCertificateId:
+          this.extractStringField(certificate, 'id') ?? request.issuedCertificateId,
+        reason: params.dto.reason.trim(),
+      },
+    });
+
+    return this.getCertificateRequestDetail(params.requestId);
+  }
+
+  async rejectCertificateRequest(params: {
+    requestId: string;
+    adminId: string;
+    ipAddress: string | null;
+    dto: ReviewCertificateRequestDto;
+  }) {
+    const request = await this.findCertificateRequestOrThrow(params.requestId);
+    this.ensurePendingRequest(request);
+
+    await this.signatureServiceClient.rejectCertificateRequest(params.requestId, {
+      adminId: params.adminId,
+      reason: params.dto.reason.trim(),
+    });
+
+    await this.audit.log({
+      adminId: params.adminId,
+      action: 'CERTIFICATE_REQUEST_REJECTED',
+      targetUserId: request.userId,
+      ipAddress: params.ipAddress ?? undefined,
+      metadata: {
+        requestId: request.id,
+        reason: params.dto.reason.trim(),
+      },
+    });
+
+    return this.getCertificateRequestDetail(params.requestId);
+  }
+
   // ─── Internal ────────────────────────────────────────────────────────────
 
   /**
@@ -265,6 +365,81 @@ export class AdminCertificatesService {
       throw new NotFoundException('Certificate not found.');
     }
     return row;
+  }
+
+  private async findCertificateRequestOrThrow(
+    requestId: string,
+  ): Promise<CertificateRequestRow> {
+    const row = await this.prisma.personalCertificateRequest.findUnique({
+      where: { id: requestId },
+      select: this.certificateRequestRowSelect(),
+    });
+
+    if (!row) {
+      throw new NotFoundException('Certificate request not found.');
+    }
+
+    return row;
+  }
+
+  private buildRequestWhere(
+    dto: QueryCertificateRequestsDto,
+  ): Prisma.PersonalCertificateRequestWhereInput {
+    const where: Prisma.PersonalCertificateRequestWhereInput = {};
+
+    if (dto.status) {
+      where.status = dto.status;
+    }
+
+    if (!dto.search) {
+      return where;
+    }
+
+    where.OR = [
+      { user: { email: { contains: dto.search, mode: 'insensitive' } } },
+      {
+        user: {
+          citizenIdentity: {
+            is: {
+              postNames: { contains: dto.search, mode: 'insensitive' },
+            },
+          },
+        },
+      },
+      {
+        user: {
+          citizenIdentity: {
+            is: {
+              surName: { contains: dto.search, mode: 'insensitive' },
+            },
+          },
+        },
+      },
+    ];
+
+    return where;
+  }
+
+  private ensurePendingRequest(
+    request: Pick<CertificateRequestRow, 'status'>,
+  ): void {
+    if (request.status !== CertificateRequestStatus.PENDING) {
+      throw new ConflictException(
+        'Only pending certificate requests can be reviewed.',
+      );
+    }
+  }
+
+  private extractStringField(
+    value: unknown,
+    key: string,
+  ): string | null {
+    if (typeof value !== 'object' || value === null) {
+      return null;
+    }
+
+    const nextValue = Reflect.get(value, key);
+    return typeof nextValue === 'string' ? nextValue : null;
   }
 
   /**
@@ -300,5 +475,43 @@ export class AdminCertificatesService {
         select: { algorithm: true },
       },
     } satisfies Prisma.PersonalCertificateSelect;
+  }
+
+  private certificateRequestRowSelect() {
+    return {
+      id: true,
+      userId: true,
+      keyPairId: true,
+      status: true,
+      requestedValidityYears: true,
+      reviewReason: true,
+      cancellationReason: true,
+      reviewedByAdminId: true,
+      reviewedAt: true,
+      cancelledAt: true,
+      issuedCertificateId: true,
+      createdAt: true,
+      updatedAt: true,
+      user: {
+        select: {
+          email: true,
+          imageUrl: true,
+          citizenIdentity: {
+            select: {
+              surName: true,
+              postNames: true,
+              identityType: true,
+            },
+          },
+        },
+      },
+      keyPair: {
+        select: {
+          algorithm: true,
+          fingerprint: true,
+          createdAt: true,
+        },
+      },
+    } satisfies Prisma.PersonalCertificateRequestSelect;
   }
 }
