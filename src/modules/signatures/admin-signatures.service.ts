@@ -155,13 +155,13 @@ export class AdminSignaturesService {
       throw new NotFoundException('Signature not found.');
     }
 
-    // Audit history for this signature — filtered via metadata.signatureId
-    // (= certificate id under the new anchor). The Json path filter still
-    // benefits from the (action, createdAt) index. Limited to 25 rows
-    // because the UI only shows the most recent.
+    // Audit history for this signature — correlated via metadata.signatureId
+    // (= certificate id under the new anchor). We intentionally avoid an
+    // `action: SIGNATURE_REVOKED` predicate here because shared environments
+    // can lag on enum rollout; filtering by the metadata key is the stable
+    // cross-version contract and still returns the rows the detail page needs.
     const auditRows = await this.prisma.adminAuditLog.findMany({
       where: {
-        action: { in: ['SIGNATURE_REVOKED'] },
         metadata: { path: ['signatureId'], equals: signatureId },
       },
       orderBy: { createdAt: 'desc' },
