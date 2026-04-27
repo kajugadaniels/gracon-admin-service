@@ -25,13 +25,17 @@ import {
   ApiParam,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { AdminRole } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { AdminCertificatesService } from './admin-certificates.service';
 import { QueryCertificatesDto } from './dto/query-certificates.dto';
+import { QueryCertificateRequestsDto } from './dto/query-certificate-requests.dto';
 import { RevokeCertificateDto } from './dto/revoke-certificate.dto';
 import { ReissueCertificateDto } from './dto/reissue-certificate.dto';
+import { ReviewCertificateRequestDto } from './dto/review-certificate-request.dto';
 import { CurrentAdmin } from '../../common/decorators/current-admin.decorator';
 import type { AdminJwtPayload } from '../../common/decorators/current-admin.decorator';
+import { RequireRole } from '../../common/decorators/require-role.decorator';
 
 @ApiTags('certificates')
 @ApiBearerAuth('admin-jwt')
@@ -53,6 +57,39 @@ export class AdminCertificatesController {
   @ApiResponse({ status: 200, description: 'Paginated certificates list.' })
   listCertificates(@Query() dto: QueryCertificatesDto) {
     return this.service.listCertificates(dto);
+  }
+
+  @Get('requests')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'List certificate requests across all users',
+    description:
+      'Returns the pending and historical certificate approval requests ' +
+      'submitted by users before a real X.509 certificate is issued.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated certificate request list.',
+  })
+  listCertificateRequests(@Query() dto: QueryCertificateRequestsDto) {
+    return this.service.listCertificateRequests(dto);
+  }
+
+  @Get('requests/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get certificate request detail',
+    description:
+      'Returns the review state, linked user, requested validity period, ' +
+      'and the key pair metadata for one certificate request.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Certificate request detail returned.',
+  })
+  @ApiResponse({ status: 404, description: 'Certificate request not found.' })
+  getCertificateRequest(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.service.getCertificateRequestDetail(id);
   }
 
   // ── GET /certificates/:id ────────────────────────────────────────────────
@@ -180,6 +217,62 @@ export class AdminCertificatesController {
   ) {
     return this.service.reissueCertificate({
       certificateId: id,
+      adminId: admin.adminId,
+      ipAddress: req.ip ?? null,
+      dto,
+    });
+  }
+
+  @Post('requests/:id/approve')
+  @RequireRole(AdminRole.SUPER_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ strict: { limit: 10, ttl: 600_000 } })
+  @ApiOperation({
+    summary: 'Approve a pending certificate request',
+    description:
+      'Triggers real certificate issuance in api/signature and records ' +
+      'a CERTIFICATE_REQUEST_APPROVED audit entry.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Certificate request approved and certificate issued.',
+  })
+  approveCertificateRequest(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: ReviewCertificateRequestDto,
+    @CurrentAdmin() admin: AdminJwtPayload,
+    @Req() req: Request,
+  ) {
+    return this.service.approveCertificateRequest({
+      requestId: id,
+      adminId: admin.adminId,
+      ipAddress: req.ip ?? null,
+      dto,
+    });
+  }
+
+  @Post('requests/:id/reject')
+  @RequireRole(AdminRole.SUPER_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ strict: { limit: 10, ttl: 600_000 } })
+  @ApiOperation({
+    summary: 'Reject a pending certificate request',
+    description:
+      'Marks the request rejected through api/signature and records a ' +
+      'CERTIFICATE_REQUEST_REJECTED audit entry.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Certificate request rejected.',
+  })
+  rejectCertificateRequest(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: ReviewCertificateRequestDto,
+    @CurrentAdmin() admin: AdminJwtPayload,
+    @Req() req: Request,
+  ) {
+    return this.service.rejectCertificateRequest({
+      requestId: id,
       adminId: admin.adminId,
       ipAddress: req.ip ?? null,
       dto,
