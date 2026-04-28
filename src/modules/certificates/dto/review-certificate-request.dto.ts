@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { IsString, MaxLength, MinLength } from 'class-validator';
 
 export class ReviewCertificateRequestDto {
@@ -10,6 +11,7 @@ export class ReviewCertificateRequestDto {
     maxLength: 500,
   })
   @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @MinLength(20, { message: 'Reason must be at least 20 characters.' })
   @MaxLength(500, { message: 'Reason must be 500 characters or fewer.' })
   reason!: string;
