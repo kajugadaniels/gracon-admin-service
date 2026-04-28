@@ -24,6 +24,7 @@ This service owns administrator authentication, admin invitations, audit-log acc
 - Dashboard metrics for the admin frontend, including foreign identity registry analytics
 - Admin certificate oversight, with certificate identity type inferred from the certificate subject identifier so NID and FIN holders are listed correctly
 - Certificate-request review workflows, including SUPER_ADMIN approval or rejection before a real personal certificate is issued
+- Clear upstream error mapping when the signature-service review bridge rejects, conflicts, or misconfigures internal credentials
 
 ## Core Skills Needed
 
