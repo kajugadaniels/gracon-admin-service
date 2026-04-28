@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  ConflictException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -38,6 +40,20 @@ export class SignatureServiceClient {
 
     if (response.status === 404) {
       throw new NotFoundException('Certificate request not found.');
+    }
+
+    if (response.status === 400) {
+      throw new BadRequestException(await this.safeReadErrorMessage(response));
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      throw new InternalServerErrorException(
+        'Signature service internal authentication failed. Check the review bridge credentials.',
+      );
+    }
+
+    if (response.status === 409) {
+      throw new ConflictException(await this.safeReadErrorMessage(response));
     }
 
     if (response.status >= 500) {
