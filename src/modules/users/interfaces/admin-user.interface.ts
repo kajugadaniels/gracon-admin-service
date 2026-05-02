@@ -1,4 +1,4 @@
-import { AdminRole } from '@prisma/client';
+import { AdminRole, IdentityType } from '@prisma/client';
 
 // Paginated user list item — lightweight, no sensitive data
 export interface AdminUserListItem {
@@ -7,6 +7,7 @@ export interface AdminUserListItem {
   lastName: string;
   email: string;
   phoneNumber: string | null;
+  identityType: IdentityType | null;
   isActive: boolean;
   isVerified: boolean;
   isIdVerified: boolean;
@@ -27,6 +28,7 @@ export interface AdminUserDetail {
   nid: string; // "••••••••••••0056" for ADMIN, full for SUPER_ADMIN
   pid: string; // same masking rule
   nidDecrypted: boolean; // true = full value shown, false = masked
+  identityType: IdentityType | null;
   dateOfBirth: Date | null;
   sex: string | null;
   countryOfBirth: string | null;
