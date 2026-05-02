@@ -812,6 +812,16 @@ export class AdminCertificatesService {
         select: {
           email: true,
           imageUrl: true,
+          personalCertificateAccessPolicy: {
+            select: {
+              status: true,
+              banReason: true,
+              bannedAt: true,
+              unbanReason: true,
+              unbannedAt: true,
+              updatedAt: true,
+            },
+          },
           citizenIdentity: {
             select: { surName: true, postNames: true },
           },
