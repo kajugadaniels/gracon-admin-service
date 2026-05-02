@@ -16,7 +16,11 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
-import { CertificateRequestStatus, Prisma } from '@prisma/client';
+import {
+  CertificateAccessPolicyStatus,
+  CertificateRequestStatus,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { QueryCertificatesDto } from './dto/query-certificates.dto';
@@ -24,6 +28,7 @@ import { QueryCertificateRequestsDto } from './dto/query-certificate-requests.dt
 import { RevokeCertificateDto } from './dto/revoke-certificate.dto';
 import { ReissueCertificateDto } from './dto/reissue-certificate.dto';
 import { ReviewCertificateRequestDto } from './dto/review-certificate-request.dto';
+import { CertificateAccessPolicyReasonDto } from './dto/certificate-access-policy.dto';
 import { buildPaginatedResponse } from '../../common/pagination/paginated-response';
 import {
   buildCertificateListItem,
@@ -235,6 +240,167 @@ export class AdminCertificatesService {
     return this.getCertificateDetail(params.certificateId);
   }
 
+  async banCertificateAccessFromCertificate(params: {
+    certificateId: string;
+    adminId: string;
+    ipAddress: string | null;
+    dto: CertificateAccessPolicyReasonDto;
+  }) {
+    const row = await this.findCertificateOrThrow(params.certificateId);
+    const reason = params.dto.reason.trim();
+    const bannedAt = new Date();
+    const revokedCertificate = !row.isRevoked;
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.revokeCertificateIfNeeded(tx, row, reason, bannedAt);
+      await this.upsertBannedPolicy(tx, row.userId, params.adminId, reason, bannedAt);
+      await this.cancelPendingRequests(tx, row.userId, reason, bannedAt);
+    });
+
+    await this.audit.log({
+      adminId: params.adminId,
+      action: 'CERTIFICATE_ACCESS_BANNED',
+      targetUserId: row.userId,
+      ipAddress: params.ipAddress ?? undefined,
+      metadata: {
+        certificateId: row.id,
+        serialNumber: row.serialNumber,
+        reason,
+        bannedAt: bannedAt.toISOString(),
+        revokedCertificate: !row.isRevoked,
+      },
+    });
+
+    if (revokedCertificate) {
+      await this.audit.log({
+        adminId: params.adminId,
+        action: 'CERTIFICATE_REVOKED',
+        targetUserId: row.userId,
+        ipAddress: params.ipAddress ?? undefined,
+        metadata: {
+          certificateId: row.id,
+          serialNumber: row.serialNumber,
+          crlReasonCode: 'cessationOfOperation',
+          reason: `Certificate access banned by admin: ${reason}`,
+          revokedAt: bannedAt.toISOString(),
+        },
+      });
+    }
+
+    return this.getCertificateDetail(row.id);
+  }
+
+  async banCertificateAccessForUser(params: {
+    userId: string;
+    adminId: string;
+    ipAddress: string | null;
+    dto: CertificateAccessPolicyReasonDto;
+  }) {
+    await this.ensureUserExists(params.userId);
+    const reason = params.dto.reason.trim();
+    const bannedAt = new Date();
+    const revokedCertificates: Array<
+      Pick<CertificateRow, 'id' | 'serialNumber' | 'userId'>
+    > = [];
+
+    await this.prisma.$transaction(async (tx) => {
+      const activeCertificate = await tx.personalCertificate.findFirst({
+        where: { userId: params.userId, isRevoked: false },
+        select: this.certificateRowSelect(),
+      });
+
+      if (activeCertificate) {
+        await this.revokeCertificateIfNeeded(
+          tx,
+          activeCertificate,
+          reason,
+          bannedAt,
+        );
+        revokedCertificates.push(activeCertificate);
+      }
+
+      await this.upsertBannedPolicy(
+        tx,
+        params.userId,
+        params.adminId,
+        reason,
+        bannedAt,
+      );
+      await this.cancelPendingRequests(tx, params.userId, reason, bannedAt);
+    });
+
+    await this.audit.log({
+      adminId: params.adminId,
+      action: 'CERTIFICATE_ACCESS_BANNED',
+      targetUserId: params.userId,
+      ipAddress: params.ipAddress ?? undefined,
+      metadata: {
+        reason,
+        bannedAt: bannedAt.toISOString(),
+      },
+    });
+
+    const revokedCertificate = revokedCertificates[0];
+    if (revokedCertificate) {
+      await this.audit.log({
+        adminId: params.adminId,
+        action: 'CERTIFICATE_REVOKED',
+        targetUserId: revokedCertificate.userId,
+        ipAddress: params.ipAddress ?? undefined,
+        metadata: {
+          certificateId: revokedCertificate.id,
+          serialNumber: revokedCertificate.serialNumber,
+          crlReasonCode: 'cessationOfOperation',
+          reason: `Certificate access banned by admin: ${reason}`,
+          revokedAt: bannedAt.toISOString(),
+        },
+      });
+    }
+
+    return this.getCertificateAccessPolicy(params.userId);
+  }
+
+  async liftCertificateAccessBan(params: {
+    userId: string;
+    adminId: string;
+    ipAddress: string | null;
+    dto: CertificateAccessPolicyReasonDto;
+  }) {
+    await this.ensureUserExists(params.userId);
+    const reason = params.dto.reason.trim();
+    const unbannedAt = new Date();
+    const currentPolicy = await this.getCertificateAccessPolicyRow(params.userId);
+
+    if (currentPolicy?.status !== CertificateAccessPolicyStatus.BANNED) {
+      throw new ConflictException('Certificate access is not currently banned.');
+    }
+
+    await this.prisma.personalCertificateAccessPolicy.update({
+      where: { userId: params.userId },
+      data: {
+        status: CertificateAccessPolicyStatus.ALLOWED,
+        unbanReason: reason,
+        unbannedByAdminId: params.adminId,
+        unbannedAt,
+      },
+    });
+
+    await this.audit.log({
+      adminId: params.adminId,
+      action: 'CERTIFICATE_ACCESS_BAN_LIFTED',
+      targetUserId: params.userId,
+      ipAddress: params.ipAddress ?? undefined,
+      metadata: {
+        reason,
+        unbannedAt: unbannedAt.toISOString(),
+        previousBanReason: currentPolicy.banReason,
+        previousBannedAt: currentPolicy.bannedAt?.toISOString() ?? null,
+      },
+    });
+
+    return this.getCertificateAccessPolicy(params.userId);
+  }
+
   // ─── Reissue (audit-only) ────────────────────────────────────────────────
 
   /**
@@ -347,6 +513,126 @@ export class AdminCertificatesService {
   }
 
   // ─── Internal ────────────────────────────────────────────────────────────
+
+  private async ensureUserExists(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+  }
+
+  private getCertificateAccessPolicyRow(userId: string) {
+    return this.prisma.personalCertificateAccessPolicy.findUnique({
+      where: { userId },
+      select: {
+        status: true,
+        banReason: true,
+        bannedAt: true,
+        unbanReason: true,
+        unbannedAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  private async getCertificateAccessPolicy(userId: string) {
+    const policy = await this.getCertificateAccessPolicyRow(userId);
+
+    if (!policy) {
+      return {
+        userId,
+        status: CertificateAccessPolicyStatus.ALLOWED,
+        isBanned: false,
+        banReason: null,
+        bannedAt: null,
+        unbanReason: null,
+        unbannedAt: null,
+        updatedAt: null,
+      };
+    }
+
+    return {
+      userId,
+      status: policy.status,
+      isBanned: policy.status === CertificateAccessPolicyStatus.BANNED,
+      banReason: policy.banReason,
+      bannedAt: policy.bannedAt?.toISOString() ?? null,
+      unbanReason: policy.unbanReason,
+      unbannedAt: policy.unbannedAt?.toISOString() ?? null,
+      updatedAt: policy.updatedAt.toISOString(),
+    };
+  }
+
+  private async revokeCertificateIfNeeded(
+    tx: Prisma.TransactionClient,
+    row: CertificateRow,
+    reason: string,
+    revokedAt: Date,
+  ) {
+    if (row.isRevoked) {
+      return;
+    }
+
+    await tx.personalCertificate.update({
+      where: { id: row.id },
+      data: {
+        isRevoked: true,
+        revokedAt,
+        revokedReason: `Certificate access banned by admin: ${reason}`,
+      },
+    });
+  }
+
+  private async upsertBannedPolicy(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    adminId: string,
+    reason: string,
+    bannedAt: Date,
+  ) {
+    await tx.personalCertificateAccessPolicy.upsert({
+      where: { userId },
+      create: {
+        userId,
+        status: CertificateAccessPolicyStatus.BANNED,
+        banReason: reason,
+        bannedByAdminId: adminId,
+        bannedAt,
+      },
+      update: {
+        status: CertificateAccessPolicyStatus.BANNED,
+        banReason: reason,
+        bannedByAdminId: adminId,
+        bannedAt,
+        unbanReason: null,
+        unbannedByAdminId: null,
+        unbannedAt: null,
+      },
+    });
+  }
+
+  private async cancelPendingRequests(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    reason: string,
+    cancelledAt: Date,
+  ) {
+    await tx.personalCertificateRequest.updateMany({
+      where: {
+        userId,
+        status: CertificateRequestStatus.PENDING,
+      },
+      data: {
+        status: CertificateRequestStatus.CANCELLED,
+        cancelledAt,
+        cancellationReason: `Certificate access banned by admin: ${reason}`,
+      },
+    });
+  }
 
   /**
    * Loads one certificate with the canonical select shape, throwing 404
@@ -496,6 +782,16 @@ export class AdminCertificatesService {
         select: {
           email: true,
           imageUrl: true,
+          personalCertificateAccessPolicy: {
+            select: {
+              status: true,
+              banReason: true,
+              bannedAt: true,
+              unbanReason: true,
+              unbannedAt: true,
+              updatedAt: true,
+            },
+          },
           citizenIdentity: {
             select: {
               surName: true,
