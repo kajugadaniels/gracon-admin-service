@@ -9,6 +9,7 @@ import { AdminCertificatesService } from './admin-certificates.service';
 import type { PrismaService } from '../../common/prisma/prisma.service';
 import type { AuditService } from '../../common/audit/audit.service';
 import type { SignatureServiceClient } from './signature-service.client';
+import type { AppMailerService } from '../../common/mailer/mailer.service';
 
 function buildRequestRow(status: CertificateRequestStatus) {
   return {
@@ -102,6 +103,11 @@ describe('AdminCertificatesService', () => {
     approveCertificateRequest: jest.Mock;
     rejectCertificateRequest: jest.Mock;
   };
+  let mailer: {
+    sendCertificateRevokedEmail: jest.Mock;
+    sendCertificateAccessBannedEmail: jest.Mock;
+    sendCertificateAccessRestoredEmail: jest.Mock;
+  };
 
   beforeEach(() => {
     prisma = {
@@ -133,11 +139,17 @@ describe('AdminCertificatesService', () => {
       approveCertificateRequest: jest.fn(),
       rejectCertificateRequest: jest.fn(),
     };
+    mailer = {
+      sendCertificateRevokedEmail: jest.fn(),
+      sendCertificateAccessBannedEmail: jest.fn(),
+      sendCertificateAccessRestoredEmail: jest.fn(),
+    };
 
     service = new AdminCertificatesService(
       prisma as unknown as PrismaService,
       audit as unknown as AuditService,
       signatureServiceClient as unknown as SignatureServiceClient,
+      mailer as unknown as AppMailerService,
     );
   });
 
@@ -280,11 +292,25 @@ describe('AdminCertificatesService', () => {
         targetUserId: 'user-1',
       }),
     );
+    expect(mailer.sendCertificateAccessBannedEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'patrick@example.com',
+        reason:
+          'Repeated unauthorized signing attempts require manual trust review.',
+      }),
+    );
     expect(result.status).toBe('REVOKED');
   });
 
   it('bans certificate access by user without requiring an active certificate', async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'patrick@example.com',
+      citizenIdentity: {
+        postNames: 'Patrick',
+        surName: 'Ishimwe',
+      },
+    });
     prisma.personalCertificate.findFirst.mockResolvedValue(null);
     prisma.personalCertificateAccessPolicy.findUnique.mockResolvedValue({
       status: CertificateAccessPolicyStatus.BANNED,
@@ -311,11 +337,24 @@ describe('AdminCertificatesService', () => {
         targetUserId: 'user-1',
       }),
     );
+    expect(mailer.sendCertificateAccessBannedEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'patrick@example.com',
+        reason: 'Manual trust review is required before future issuance.',
+      }),
+    );
     expect(result.isBanned).toBe(true);
   });
 
   it('lifts certificate access bans and writes audit state', async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'patrick@example.com',
+      citizenIdentity: {
+        postNames: 'Patrick',
+        surName: 'Ishimwe',
+      },
+    });
     prisma.personalCertificateAccessPolicy.findUnique
       .mockResolvedValueOnce({
         status: CertificateAccessPolicyStatus.BANNED,
@@ -353,6 +392,12 @@ describe('AdminCertificatesService', () => {
       expect.objectContaining({
         action: 'CERTIFICATE_ACCESS_BAN_LIFTED',
         targetUserId: 'user-1',
+      }),
+    );
+    expect(mailer.sendCertificateAccessRestoredEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'patrick@example.com',
+        reason: 'Trust review completed and access restored.',
       }),
     );
     expect(result.isBanned).toBe(false);
