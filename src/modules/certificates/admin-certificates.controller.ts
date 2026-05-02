@@ -33,6 +33,7 @@ import { QueryCertificateRequestsDto } from './dto/query-certificate-requests.dt
 import { RevokeCertificateDto } from './dto/revoke-certificate.dto';
 import { ReissueCertificateDto } from './dto/reissue-certificate.dto';
 import { ReviewCertificateRequestDto } from './dto/review-certificate-request.dto';
+import { CertificateAccessPolicyReasonDto } from './dto/certificate-access-policy.dto';
 import { CurrentAdmin } from '../../common/decorators/current-admin.decorator';
 import type { AdminJwtPayload } from '../../common/decorators/current-admin.decorator';
 import { RequireRole } from '../../common/decorators/require-role.decorator';
@@ -162,6 +163,7 @@ export class AdminCertificatesController {
   // ── POST /certificates/:id/revoke ────────────────────────────────────────
 
   @Post(':id/revoke')
+  @RequireRole(AdminRole.SUPER_ADMIN)
   @HttpCode(HttpStatus.OK)
   @Throttle({ strict: { limit: 10, ttl: 600_000 } })
   @ApiOperation({
@@ -192,6 +194,7 @@ export class AdminCertificatesController {
   // ── POST /certificates/:id/reissue ───────────────────────────────────────
 
   @Post(':id/reissue')
+  @RequireRole(AdminRole.SUPER_ADMIN)
   @HttpCode(HttpStatus.OK)
   @Throttle({ strict: { limit: 10, ttl: 600_000 } })
   @ApiOperation({
@@ -217,6 +220,83 @@ export class AdminCertificatesController {
   ) {
     return this.service.reissueCertificate({
       certificateId: id,
+      adminId: admin.adminId,
+      ipAddress: req.ip ?? null,
+      dto,
+    });
+  }
+
+  @Post(':id/ban-access')
+  @RequireRole(AdminRole.SUPER_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ strict: { limit: 10, ttl: 600_000 } })
+  @ApiOperation({
+    summary: 'Permanently ban certificate access from a certificate',
+    description:
+      'Revokes the certificate if still active, blocks future certificate ' +
+      'requests/signing for the owner, cancels pending requests, and writes ' +
+      'a CERTIFICATE_ACCESS_BANNED audit entry.',
+  })
+  @ApiParam({ name: 'id', description: 'Certificate UUID.' })
+  @ApiResponse({ status: 200, description: 'Certificate access banned.' })
+  banCertificateAccessFromCertificate(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: CertificateAccessPolicyReasonDto,
+    @CurrentAdmin() admin: AdminJwtPayload,
+    @Req() req: Request,
+  ) {
+    return this.service.banCertificateAccessFromCertificate({
+      certificateId: id,
+      adminId: admin.adminId,
+      ipAddress: req.ip ?? null,
+      dto,
+    });
+  }
+
+  @Post('users/:userId/access/ban')
+  @RequireRole(AdminRole.SUPER_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ strict: { limit: 10, ttl: 600_000 } })
+  @ApiOperation({
+    summary: 'Permanently ban certificate access for a user',
+    description:
+      'Blocks future certificate requests/signing for a user even if they ' +
+      'do not currently have an active certificate.',
+  })
+  @ApiResponse({ status: 200, description: 'Certificate access banned.' })
+  banCertificateAccessForUser(
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @Body() dto: CertificateAccessPolicyReasonDto,
+    @CurrentAdmin() admin: AdminJwtPayload,
+    @Req() req: Request,
+  ) {
+    return this.service.banCertificateAccessForUser({
+      userId,
+      adminId: admin.adminId,
+      ipAddress: req.ip ?? null,
+      dto,
+    });
+  }
+
+  @Post('users/:userId/access/unban')
+  @RequireRole(AdminRole.SUPER_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ strict: { limit: 10, ttl: 600_000 } })
+  @ApiOperation({
+    summary: 'Lift a certificate access ban for a user',
+    description:
+      'Restores the user to ALLOWED certificate access. The user must still ' +
+      'submit a fresh certificate request before they can sign again.',
+  })
+  @ApiResponse({ status: 200, description: 'Certificate access ban lifted.' })
+  liftCertificateAccessBan(
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @Body() dto: CertificateAccessPolicyReasonDto,
+    @CurrentAdmin() admin: AdminJwtPayload,
+    @Req() req: Request,
+  ) {
+    return this.service.liftCertificateAccessBan({
+      userId,
       adminId: admin.adminId,
       ipAddress: req.ip ?? null,
       dto,
