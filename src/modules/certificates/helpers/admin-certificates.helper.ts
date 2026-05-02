@@ -5,7 +5,10 @@
 // (fingerprint, DER) live here too because they're pure transformations
 // over the certificate body.
 import * as crypto from 'crypto';
-import { PersonalKeyAlgorithm } from '@prisma/client';
+import {
+  CertificateAccessPolicyStatus,
+  PersonalKeyAlgorithm,
+} from '@prisma/client';
 import type {
   AdminCertificateIdentityType,
   AdminCertificateStatusFilter,
@@ -39,6 +42,14 @@ export type CertificateRow = {
   user: {
     email: string;
     imageUrl: string | null;
+    personalCertificateAccessPolicy: {
+      status: CertificateAccessPolicyStatus;
+      banReason: string | null;
+      bannedAt: Date | null;
+      unbanReason: string | null;
+      unbannedAt: Date | null;
+      updatedAt: Date;
+    } | null;
     citizenIdentity: { surName: string; postNames: string } | null;
   };
   keyPair: {
@@ -171,6 +182,33 @@ export function buildCertificateDetail(row: CertificateRow, now: Date = new Date
     revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
     revokedReason: row.revokedReason,
     status: deriveCertificateStatus(row, now),
+    certificateAccessPolicy: buildCertificateAccessPolicy(row),
+  };
+}
+
+function buildCertificateAccessPolicy(row: CertificateRow) {
+  const policy = row.user.personalCertificateAccessPolicy;
+
+  if (!policy) {
+    return {
+      status: CertificateAccessPolicyStatus.ALLOWED,
+      isBanned: false,
+      banReason: null,
+      bannedAt: null,
+      unbanReason: null,
+      unbannedAt: null,
+      updatedAt: null,
+    };
+  }
+
+  return {
+    status: policy.status,
+    isBanned: policy.status === CertificateAccessPolicyStatus.BANNED,
+    banReason: policy.banReason,
+    bannedAt: policy.bannedAt?.toISOString() ?? null,
+    unbanReason: policy.unbanReason,
+    unbannedAt: policy.unbannedAt?.toISOString() ?? null,
+    updatedAt: policy.updatedAt.toISOString(),
   };
 }
 
