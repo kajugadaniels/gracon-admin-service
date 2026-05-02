@@ -9,7 +9,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { AdminRole, AdminAction } from '@prisma/client';
+import { AdminRole, AdminAction, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { EncryptionService } from '../../common/crypto/encryption.service';
 import { AuditService } from '../../common/audit/audit.service';
@@ -50,11 +50,14 @@ export class AdminUsersService {
     const skip = (page - 1) * limit;
 
     // Build dynamic WHERE clause from filters
-    const where: any = {};
+    const where: Prisma.UserWhereInput = {};
 
     if (dto.isActive !== undefined) where.isActive = dto.isActive;
     if (dto.isVerified !== undefined) where.isVerified = dto.isVerified;
     if (dto.isIdVerified !== undefined) where.isIdVerified = dto.isIdVerified;
+    if (dto.identityType) {
+      where.citizenIdentity = { identityType: dto.identityType };
+    }
 
     if (dto.createdFrom || dto.createdTo) {
       where.createdAt = {};
@@ -96,6 +99,7 @@ export class AdminUsersService {
           createdAt: true,
           citizenIdentity: {
             select: {
+              identityType: true,
               surName: true,
               postNames: true,
             },
@@ -112,6 +116,7 @@ export class AdminUsersService {
       lastName: u.citizenIdentity?.surName ?? '',
       email: u.email,
       phoneNumber: u.phoneNumber ?? null,
+      identityType: u.citizenIdentity?.identityType ?? null,
       isActive: u.isActive,
       isVerified: u.isVerified,
       isIdVerified: u.isIdVerified,
@@ -174,6 +179,7 @@ export class AdminUsersService {
         citizenIdentity: {
           select: {
             nidEncrypted: true,
+            identityType: true,
             surName: true,
             postNames: true,
             sex: true,
@@ -288,6 +294,7 @@ export class AdminUsersService {
       nid: maskedNid,
       pid: maskedPid,
       nidDecrypted: false, // always false — detail endpoint never decrypts
+      identityType: user.citizenIdentity?.identityType ?? null,
       dateOfBirth: user.citizenIdentity?.dateOfBirth ?? null,
       sex: user.citizenIdentity?.sex ?? null,
       countryOfBirth: user.citizenIdentity?.countryOfBirth ?? null,
