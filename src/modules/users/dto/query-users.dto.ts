@@ -7,11 +7,13 @@ import {
   IsBoolean,
   IsInt,
   IsDateString,
+  IsEnum,
   Min,
   Max,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IdentityType } from '@prisma/client';
 
 export class QueryUsersDto {
   @ApiPropertyOptional({
@@ -74,6 +76,16 @@ export class QueryUsersDto {
     return value;
   })
   isVerified?: boolean;
+
+  @ApiPropertyOptional({
+    enum: IdentityType,
+    description:
+      'Filter by identity source. NID returns Rwandan citizen identity users; FIN returns foreign identity users with platform accounts.',
+    example: IdentityType.FIN,
+  })
+  @IsOptional()
+  @IsEnum(IdentityType)
+  identityType?: IdentityType;
 
   @ApiPropertyOptional({
     description:
