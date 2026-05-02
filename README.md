@@ -25,6 +25,7 @@ This service owns administrator authentication, admin invitations, audit-log acc
 - Admin certificate oversight, with certificate identity type inferred from the certificate subject identifier so NID and FIN holders are listed correctly
 - Certificate-request review workflows, including SUPER_ADMIN approval or rejection before a real personal certificate is issued
 - SUPER_ADMIN certificate sanctions: revocation, user-level certificate access bans, ban lifting, and banned-request visibility
+- Certificate sanction email notices for revocation, access restriction, and access restoration
 - Clear upstream error mapping when the signature-service review bridge rejects, conflicts, or misconfigures internal credentials
 
 ## Core Skills Needed
@@ -106,6 +107,7 @@ MAIL_FROM=
 SIGNATURE_SERVICE_URL=http://localhost:3002/api/v1
 SIGNATURE_SERVICE_USERNAME=service.signature-admin@yourplatform.com
 SIGNATURE_SERVICE_PASSWORD=your_signature_service_review_password
+USER_FRONTEND_URL=http://localhost:4000
 FRONTEND_URL=http://localhost:4001
 DOCS_BASIC_AUTH_USER=
 DOCS_BASIC_AUTH_PASS=
@@ -118,6 +120,7 @@ DOCS_BASIC_AUTH_PASS=
 - Must never accept user JWTs from `api/auth`
 - Calls `api/signature` only through the internal certificate-request review bridge for approval and rejection
 - Owns admin-side certificate access sanctions and writes the shared policy rows read by `api/signature`
+- Sends user-facing certificate sanction email notices after successful certificate policy changes
 - Should never call unrelated platform services directly for business logic
 
 ## Important Rules
