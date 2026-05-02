@@ -24,6 +24,7 @@ This service owns administrator authentication, admin invitations, audit-log acc
 - Dashboard metrics for the admin frontend, including foreign identity registry analytics
 - Admin certificate oversight, with certificate identity type inferred from the certificate subject identifier so NID and FIN holders are listed correctly
 - Certificate-request review workflows, including SUPER_ADMIN approval or rejection before a real personal certificate is issued
+- SUPER_ADMIN certificate sanctions: revocation, user-level certificate access bans, ban lifting, and banned-request visibility
 - Clear upstream error mapping when the signature-service review bridge rejects, conflicts, or misconfigures internal credentials
 
 ## Core Skills Needed
@@ -116,6 +117,7 @@ DOCS_BASIC_AUTH_PASS=
 - Reads the shared auth database, but does not become the auth issuer
 - Must never accept user JWTs from `api/auth`
 - Calls `api/signature` only through the internal certificate-request review bridge for approval and rejection
+- Owns admin-side certificate access sanctions and writes the shared policy rows read by `api/signature`
 - Should never call unrelated platform services directly for business logic
 
 ## Important Rules
