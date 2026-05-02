@@ -38,6 +38,7 @@ model User {
   personalKeyPairs         PersonalKeyPair[]
   personalCertificates     PersonalCertificate[]
   personalCertificateRequests PersonalCertificateRequest[]
+  personalCertificateAccessPolicy PersonalCertificateAccessPolicy?
   personalSignedDocuments  PersonalSignedDocument[]
   personalSignatureImages  PersonalSignatureImage[]
 
@@ -341,6 +342,8 @@ enum AdminAction {
   CERTIFICATE_REISSUE_REQUESTED
   CERTIFICATE_REQUEST_APPROVED
   CERTIFICATE_REQUEST_REJECTED
+  CERTIFICATE_ACCESS_BANNED
+  CERTIFICATE_ACCESS_BAN_LIFTED
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -407,6 +410,11 @@ enum CertificateRequestStatus {
   CANCELLED
 }
 
+enum CertificateAccessPolicyStatus {
+  ALLOWED
+  BANNED
+}
+
 // ─── Personal Certificates ────────────────────────────────────────────────────
 // X.509 certificate binding a user's verified identity to their public key.
 // Admin-side revocation flips `isRevoked` true and stores `revokedReason`.
@@ -461,6 +469,25 @@ model PersonalCertificateRequest {
   @@index([userId, status, createdAt])
   @@index([keyPairId, status])
   @@map("personal_certificate_requests")
+}
+
+model PersonalCertificateAccessPolicy {
+  id                String                        @id @default(uuid())
+  userId            String                        @unique
+  status            CertificateAccessPolicyStatus @default(ALLOWED)
+  banReason         String?
+  bannedByAdminId   String?
+  bannedAt          DateTime?
+  unbanReason       String?
+  unbannedByAdminId String?
+  unbannedAt        DateTime?
+  createdAt         DateTime                      @default(now())
+  updatedAt         DateTime                      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, updatedAt])
+  @@map("personal_certificate_access_policies")
 }
 
 // ─── Personal Signed Documents ────────────────────────────────────────────────
