@@ -63,6 +63,10 @@ class EnvironmentVariables {
   })
   ADMIN_FRONTEND_URL: string;
 
+  @IsOptional()
+  @IsString()
+  USER_FRONTEND_URL?: string;
+
   // Optional extra allowed origins for CORS, comma-separated.
   // Leave empty unless another trusted frontend needs to call this API.
   @IsOptional()
