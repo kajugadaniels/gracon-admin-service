@@ -1,4 +1,5 @@
 import {
+  CertificateAccessPolicyStatus,
   CertificateRequestStatus,
   PersonalKeyAlgorithm,
   type IdentityType,
@@ -21,6 +22,14 @@ export type CertificateRequestRow = {
   user: {
     email: string;
     imageUrl: string | null;
+    personalCertificateAccessPolicy: {
+      status: CertificateAccessPolicyStatus;
+      banReason: string | null;
+      bannedAt: Date | null;
+      unbanReason: string | null;
+      unbannedAt: Date | null;
+      updatedAt: Date;
+    } | null;
     citizenIdentity: {
       surName: string;
       postNames: string;
@@ -60,6 +69,7 @@ export function buildCertificateRequestListItem(row: CertificateRequestRow) {
     requestedAt: row.createdAt.toISOString(),
     reviewedAt: row.reviewedAt?.toISOString() ?? null,
     issuedCertificateId: row.issuedCertificateId,
+    certificateAccessPolicy: buildCertificateAccessPolicy(row),
   };
 }
 
@@ -85,5 +95,32 @@ export function buildCertificateRequestDetail(row: CertificateRequestRow) {
     issuedCertificateId: row.issuedCertificateId,
     requestedAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    certificateAccessPolicy: buildCertificateAccessPolicy(row),
+  };
+}
+
+function buildCertificateAccessPolicy(row: CertificateRequestRow) {
+  const policy = row.user.personalCertificateAccessPolicy;
+
+  if (!policy) {
+    return {
+      status: CertificateAccessPolicyStatus.ALLOWED,
+      isBanned: false,
+      banReason: null,
+      bannedAt: null,
+      unbanReason: null,
+      unbannedAt: null,
+      updatedAt: null,
+    };
+  }
+
+  return {
+    status: policy.status,
+    isBanned: policy.status === CertificateAccessPolicyStatus.BANNED,
+    banReason: policy.banReason,
+    bannedAt: policy.bannedAt?.toISOString() ?? null,
+    unbanReason: policy.unbanReason,
+    unbannedAt: policy.unbannedAt?.toISOString() ?? null,
+    updatedAt: policy.updatedAt.toISOString(),
   };
 }
