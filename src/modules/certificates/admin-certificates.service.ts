@@ -23,6 +23,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
+import { AppMailerService } from '../../common/mailer/mailer.service';
 import { QueryCertificatesDto } from './dto/query-certificates.dto';
 import { QueryCertificateRequestsDto } from './dto/query-certificate-requests.dto';
 import { RevokeCertificateDto } from './dto/revoke-certificate.dto';
@@ -53,6 +54,7 @@ export class AdminCertificatesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly signatureServiceClient: SignatureServiceClient,
+    private readonly mailer: AppMailerService,
   ) {}
 
   // ─── List ────────────────────────────────────────────────────────────────
@@ -237,6 +239,13 @@ export class AdminCertificatesService {
       },
     });
 
+    await this.mailer.sendCertificateRevokedEmail({
+      to: row.user.email,
+      userName: this.buildUserName(row),
+      reason,
+      actionAt: revokedAt,
+    });
+
     return this.getCertificateDetail(params.certificateId);
   }
 
@@ -287,6 +296,13 @@ export class AdminCertificatesService {
       });
     }
 
+    await this.mailer.sendCertificateAccessBannedEmail({
+      to: row.user.email,
+      userName: this.buildUserName(row),
+      reason,
+      actionAt: bannedAt,
+    });
+
     return this.getCertificateDetail(row.id);
   }
 
@@ -296,7 +312,7 @@ export class AdminCertificatesService {
     ipAddress: string | null;
     dto: CertificateAccessPolicyReasonDto;
   }) {
-    await this.ensureUserExists(params.userId);
+    const user = await this.ensureUserExists(params.userId);
     const reason = params.dto.reason.trim();
     const bannedAt = new Date();
     const revokedCertificates: Array<
@@ -357,6 +373,13 @@ export class AdminCertificatesService {
       });
     }
 
+    await this.mailer.sendCertificateAccessBannedEmail({
+      to: user.email,
+      userName: this.buildUserNameFromUser(user),
+      reason,
+      actionAt: bannedAt,
+    });
+
     return this.getCertificateAccessPolicy(params.userId);
   }
 
@@ -366,7 +389,7 @@ export class AdminCertificatesService {
     ipAddress: string | null;
     dto: CertificateAccessPolicyReasonDto;
   }) {
-    await this.ensureUserExists(params.userId);
+    const user = await this.ensureUserExists(params.userId);
     const reason = params.dto.reason.trim();
     const unbannedAt = new Date();
     const currentPolicy = await this.getCertificateAccessPolicyRow(params.userId);
@@ -396,6 +419,13 @@ export class AdminCertificatesService {
         previousBanReason: currentPolicy.banReason,
         previousBannedAt: currentPolicy.bannedAt?.toISOString() ?? null,
       },
+    });
+
+    await this.mailer.sendCertificateAccessRestoredEmail({
+      to: user.email,
+      userName: this.buildUserNameFromUser(user),
+      reason,
+      actionAt: unbannedAt,
     });
 
     return this.getCertificateAccessPolicy(params.userId);
@@ -517,12 +547,42 @@ export class AdminCertificatesService {
   private async ensureUserExists(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true },
+      select: {
+        id: true,
+        email: true,
+        citizenIdentity: {
+          select: {
+            postNames: true,
+            surName: true,
+          },
+        },
+      },
     });
 
     if (!user) {
       throw new NotFoundException('User not found.');
     }
+
+    return user;
+  }
+
+  private buildUserName(row: CertificateRow) {
+    return this.buildUserNameFromUser(row.user);
+  }
+
+  private buildUserNameFromUser(user: {
+    email: string;
+    citizenIdentity: {
+      postNames: string;
+      surName: string;
+    } | null;
+  }) {
+    const identity = user.citizenIdentity;
+    if (!identity) {
+      return user.email;
+    }
+
+    return `${identity.postNames} ${identity.surName}`.trim() || user.email;
   }
 
   private getCertificateAccessPolicyRow(userId: string) {
