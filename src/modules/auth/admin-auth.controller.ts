@@ -40,7 +40,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ValidateInviteDto } from './dto/validate-invite.dto';
 import { RequireRole } from '../../common/decorators/require-role.decorator';
 import { CurrentAdmin } from '../../common/decorators/current-admin.decorator';
-import { AdminRole } from '@prisma/client';
+import { AdminRole } from '@gracon/database';
 import type { AdminJwtPayload } from '../../common/decorators/current-admin.decorator';
 import { Throttle } from '@nestjs/throttler';
 import { SkipAuth } from 'src/common/decorators';
