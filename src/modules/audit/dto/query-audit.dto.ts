@@ -10,7 +10,7 @@ import {
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { AdminAction } from '@prisma/client';
+import { AdminAction } from '@gracon/database';
 
 export class QueryAuditDto {
   @ApiPropertyOptional({
