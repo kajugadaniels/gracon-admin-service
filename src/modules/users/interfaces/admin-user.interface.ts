@@ -1,4 +1,4 @@
-import { AdminRole, IdentityType } from '@prisma/client';
+import { AdminRole, IdentityType } from '@gracon/database';
 
 // Paginated user list item — lightweight, no sensitive data
 export interface AdminUserListItem {
