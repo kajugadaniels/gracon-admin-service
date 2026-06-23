@@ -27,7 +27,7 @@
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { Prisma, SecurityEvent } from '@prisma/client';
+import { Prisma, SecurityEvent } from '@gracon/database';
 
 export interface DailyCount {
   date: string; // ISO date string — "2024-11-19"
