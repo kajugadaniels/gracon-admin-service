@@ -8,7 +8,7 @@ import * as crypto from 'crypto';
 import {
   CertificateAccessPolicyStatus,
   PersonalKeyAlgorithm,
-} from '@prisma/client';
+} from '@gracon/database';
 import type {
   AdminCertificateIdentityType,
   AdminCertificateStatusFilter,
