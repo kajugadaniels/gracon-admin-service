@@ -1,11 +1,8 @@
 // One-off DB inspection — replays the exact queries the admin service runs.
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
+import { createPrismaClient } from '@gracon/database';
 
-const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
-});
+const prisma = createPrismaClient();
 
 try {
   // ── Mirror admin-signatures.service.listSignatures with no filters ──
