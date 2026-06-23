@@ -13,7 +13,7 @@ import {
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { PersonalKeyAlgorithm } from '@prisma/client';
+import { PersonalKeyAlgorithm } from '@gracon/database';
 
 /**
  * Public-facing status of a signature on the admin dashboard.
