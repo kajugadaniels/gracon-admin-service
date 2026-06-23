@@ -8,7 +8,6 @@ This service is the admin control-plane backend. Keep admin-only business rules 
 src/
   common/           admin infrastructure shared across modules
   modules/          admin business domains
-prisma/             shared-schema mirror for Prisma client generation
 test/               e2e and integration tests
 agents/             AI execution rules for this service
 ```
