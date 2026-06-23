@@ -12,6 +12,9 @@ This service owns administrator authentication, admin invitations, audit-log acc
 - Auth model: `ADMIN_JWT_SECRET` only
 - Primary consumers: `app/admin`
 
+First clone database setup:
+[docs/database-setup.md](./docs/database-setup.md)
+
 ## What This Service Owns
 
 - Admin login, refresh, logout, and invite-based set-password flow
