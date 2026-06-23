@@ -9,7 +9,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { AdminRole, AdminAction, Prisma } from '@prisma/client';
+import { AdminRole, AdminAction, Prisma } from '@gracon/database';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { EncryptionService } from '../../common/crypto/encryption.service';
 import { AuditService } from '../../common/audit/audit.service';
