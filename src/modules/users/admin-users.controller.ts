@@ -32,7 +32,7 @@ import { UpdateIdVerificationDto } from './dto/update-id-verification.dto';
 import { DecryptSensitiveIdentifierDto } from './dto/decrypt-sensitive-identifier.dto';
 import { RequireRole } from '../../common/decorators/require-role.decorator';
 import { CurrentAdmin } from '../../common/decorators/current-admin.decorator';
-import { AdminRole } from '@prisma/client';
+import { AdminRole } from '@gracon/database';
 import type { AdminJwtPayload } from '../../common/decorators/current-admin.decorator';
 
 @ApiTags('users')
