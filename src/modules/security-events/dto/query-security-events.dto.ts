@@ -10,7 +10,7 @@ import {
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { SecurityEvent } from '@prisma/client';
+import { SecurityEvent } from '@gracon/database';
 
 export class QuerySecurityEventsDto {
   @ApiPropertyOptional({
