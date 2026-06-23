@@ -6,7 +6,7 @@
 //   @RequireRole(AdminRole.SUPER_ADMIN)  — SUPER_ADMIN only
 //   No decorator                         — any authenticated admin
 import { SetMetadata } from '@nestjs/common';
-import { AdminRole } from '@prisma/client';
+import { AdminRole } from '@gracon/database';
 
 export const REQUIRE_ROLE_KEY = 'requireRole';
 
