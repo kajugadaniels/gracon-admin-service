@@ -71,7 +71,6 @@ src/
 ```text
 api/admin/
   agents/
-  prisma/
   src/
     common/
     modules/
@@ -138,7 +137,7 @@ DOCS_BASIC_AUTH_PASS=
 - Use `@RequireRole(AdminRole.SUPER_ADMIN)` for high-impact operations
 - Log every mutation through the audit service
 - Never run Prisma migrations here; `api/database` owns the shared schema lifecycle
-- Regenerate Prisma here whenever shared enum values change in `api/auth` so copied read models like `AdminAction` stay in sync with the database
+- Regenerate the shared Prisma client in `api/database` whenever shared enum values change so read models like `AdminAction` stay in sync with the database
 - When reading audit history for newer admin features, prefer stable metadata correlation keys over hard enum predicates if environments may lag on shared enum rollout
 - Never expose decrypted identifiers or internal admin secrets in responses
 
