@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
-import { AdminRole } from '@prisma/client';
+import { AdminRole } from '@gracon/database';
 import { REQUIRE_ROLE_KEY } from '../decorators/require-role.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/skip-auth.decorator';
 
