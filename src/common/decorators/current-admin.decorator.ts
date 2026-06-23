@@ -3,7 +3,7 @@
 // The JWT strategy attaches the decoded payload to req.user after
 // validating the token — this decorator reads it cleanly.
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
-import { AdminRole } from '@prisma/client';
+import { AdminRole } from '@gracon/database';
 
 export interface AdminJwtPayload {
   adminId: string;
