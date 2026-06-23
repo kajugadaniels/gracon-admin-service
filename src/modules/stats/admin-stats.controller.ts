@@ -7,7 +7,7 @@ import {
 } from '@nestjs/swagger';
 import { AdminStatsService } from './admin-stats.service';
 import { RequireRole } from '../../common/decorators/require-role.decorator';
-import { AdminRole } from '@prisma/client';
+import { AdminRole } from '@gracon/database';
 
 @ApiTags('stats')
 @ApiBearerAuth('admin-jwt')
