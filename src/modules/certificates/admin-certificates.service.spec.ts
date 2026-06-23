@@ -4,7 +4,7 @@ import {
   CertificateRequestStatus,
   IdentityType,
   PersonalKeyAlgorithm,
-} from '@prisma/client';
+} from '@gracon/database';
 import { AdminCertificatesService } from './admin-certificates.service';
 import type { PrismaService } from '../../common/prisma/prisma.service';
 import type { AuditService } from '../../common/audit/audit.service';
