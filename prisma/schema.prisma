@@ -1,7 +1,6 @@
-// Prisma schema — ID Verification Platform
-// Run `npx prisma migrate dev` to apply changes
-// Run `npx prisma generate` to regenerate the TypeScript client
-// IMPORTANT: Only api/auth/ runs migrations — api/admin/ only runs `prisma generate`
+// Prisma schema mirror for api/admin.
+// IMPORTANT: api/database owns shared schema migrations. This service imports
+// the shared client after migration and must never run Prisma migrations.
 
 generator client {
   provider = "prisma-client-js"
@@ -349,7 +348,7 @@ enum AdminAction {
 // ─────────────────────────────────────────────────────────────────────────────
 // PERSONAL SIGNATURE SERVICE TABLES (api/signature/)
 //
-// These tables are owned by api/auth/ for migrations and written by
+// These tables are migrated by api/database and written by
 // api/signature/ at runtime. api/admin/ only reads them (and updates the
 // `isRevoked`/`revokedAt`/`revokedReason`/`isActive` revocation flags) for
 // the admin dashboard. Do NOT run migrations from this service.
