@@ -27,3 +27,7 @@
 - Approval, rejection, revocation, bans, and ban lifting are high-impact actions.
 - Keep signature-service bridge credentials server-only.
 - Map upstream bridge errors clearly without leaking internal secrets.
+
+## Environment Rules
+
+- Use only runtime `DATABASE_URL` credentials here; `DATABASE_MIGRATION_URL` belongs only in `api/database`.
