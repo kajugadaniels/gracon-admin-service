@@ -20,7 +20,7 @@ import {
   CertificateAccessPolicyStatus,
   CertificateRequestStatus,
   Prisma,
-} from '@prisma/client';
+} from '@gracon/database';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { AppMailerService } from '../../common/mailer/mailer.service';
