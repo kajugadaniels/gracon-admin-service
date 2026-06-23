@@ -13,7 +13,7 @@ import {
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IdentityType } from '@prisma/client';
+import { IdentityType } from '@gracon/database';
 
 export class QueryUsersDto {
   @ApiPropertyOptional({
