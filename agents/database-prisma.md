@@ -5,7 +5,7 @@
 ## Migration Rule
 
 - Never run Prisma migrations from this project.
-- Shared schema changes must start in `api/auth/prisma/schema.prisma`.
+- Shared schema changes must start in `api/database/prisma/schema.prisma`.
 - Regenerate Prisma here after shared schema or enum changes.
 
 ## Query Rules
