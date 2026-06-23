@@ -29,7 +29,7 @@ import { AdminLoginDto } from './dto/admin-login.dto';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { AdminRole, AdminAction } from '@prisma/client';
+import { AdminRole, AdminAction } from '@gracon/database';
 import {
   AdminAuthTokens,
   AdminLoginResult,
