@@ -3,7 +3,7 @@ import {
   CertificateRequestStatus,
   PersonalKeyAlgorithm,
   type IdentityType,
-} from '@prisma/client';
+} from '@gracon/database';
 
 export type CertificateRequestRow = {
   id: string;
