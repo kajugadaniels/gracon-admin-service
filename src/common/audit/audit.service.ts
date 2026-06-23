@@ -3,9 +3,9 @@
 // Never throws — logging failure must never break the admin flow.
 // Every action is logged AFTER it succeeds — never before.
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@gracon/database';
 import { PrismaService } from '../prisma/prisma.service';
-import { AdminAction } from '@prisma/client';
+import { AdminAction } from '@gracon/database';
 
 export interface LogAuditParams {
   adminId: string;
