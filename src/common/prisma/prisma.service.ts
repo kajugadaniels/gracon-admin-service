@@ -1,7 +1,7 @@
 // PrismaService — wraps PrismaClient and integrates with NestJS lifecycle.
 // Prisma 7 requires a driver adapter — the URL is no longer read from schema.prisma.
 // The admin service NEVER calls prisma.$executeRaw for schema changes.
-// It only reads and writes data — schema is owned by api/auth/.
+// It only reads and writes data — schema is owned by api/database.
 import {
   Injectable,
   OnModuleInit,
