@@ -8,7 +8,7 @@
 // linked `PersonalKeyPair` and the signing user's identity. Status,
 // "documents signed" count, and "last used" timestamp are all derived
 // here from the certificate row.
-import { AdminRole, PersonalKeyAlgorithm, Prisma } from '@prisma/client';
+import { AdminRole, PersonalKeyAlgorithm, Prisma } from '@gracon/database';
 
 /** Public-facing signature status as rendered by the admin dashboard. */
 export type AdminSignatureStatus = 'ACTIVE' | 'REVOKED';
