@@ -25,7 +25,7 @@ import {
   ApiParam,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { AdminRole } from '@prisma/client';
+import { AdminRole } from '@gracon/database';
 import type { Request, Response } from 'express';
 import { AdminCertificatesService } from './admin-certificates.service';
 import { QueryCertificatesDto } from './dto/query-certificates.dto';
