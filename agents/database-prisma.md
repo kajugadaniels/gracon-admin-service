@@ -6,7 +6,7 @@
 
 - Never run Prisma migrations from this project.
 - Shared schema changes must start in `api/database/prisma/schema.prisma`.
-- Regenerate Prisma here after shared schema or enum changes.
+- Regenerate the shared Prisma client in `api/database` after shared schema or enum changes.
 
 ## Query Rules
 
