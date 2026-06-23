@@ -1,4 +1,4 @@
-import { AdminRole } from '@prisma/client';
+import { AdminRole } from '@gracon/database';
 
 // JWT payload stored inside the admin access token
 export interface AdminJwtPayload {
